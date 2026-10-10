@@ -1,0 +1,24 @@
+# Environments & Caches
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+.env
+.env.*
+
+# Weights & Artifacts (Store in Drive instead)
+*.pt
+*.pth
+*.onnx
+*.engine
+*.weights
+*.ckpt
+runs/
+wandb/
+mlruns/
+.cache/
+.DS_Store
+
+# Local datasets
+data/raw/
+data/processed/
+data/external/
