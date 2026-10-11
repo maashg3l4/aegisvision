@@ -1,0 +1,18 @@
+dataset_name: NEU-DET V2
+description: Hot rolled strip steel surface defects dataset
+classes:
+- crazing
+- inclusion
+- patches
+- pitted_surface
+- rolled_in_scale
+- scratches
+num_classes: 6
+splits:
+  train: data/raw/train/images
+  val: data/raw/val/images
+  test: data/raw/test/images
+integrity_checks:
+  verify_checksums: true
+  check_empty_labels: true
+  enforce_no_leakage: true

@@ -1,0 +1,13 @@
+model: yolo11n.pt
+data: configs/dataset/neu_det_v2.yaml
+epochs: 50
+imgsz: 640
+batch: 16
+device: 0
+evaluation_protocol:
+  conf: 0.001
+  iou: 0.7
+target_metrics:
+  map50: 0.7425
+  precision: 0.6907
+  recall: 0.6904
