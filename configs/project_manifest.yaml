@@ -1,4 +1,12 @@
-project_name: AegisVision
-project_version: 2.0.0
-project_stage: Day 1 Foundation
-mission: 'AI for the Inspector, not AI for the Researcher.'
+project_name: "AegisVision"
+project_version: "2.0.0"
+project_stage: "Day 1 Foundation & Documentation Polish"
+mission: "AI for the Inspector, not AI for the Researcher."
+dataset_reference: "NEU-DET V2 (6 defect classes: crazing, inclusion, patches, pitted_surface, rolled_in_scale, scratches)"
+baseline_reference: "Historical verified YOLOv11s baseline (mAP50: 0.7425)"
+engineering_principles:
+  - "Push performance without sacrificing validity"
+  - "Automate when evidence is sufficient; escalate when uncertainty matters"
+storage_policy:
+  github: "Source code, configuration, documentation, tests, lightweight manifests"
+  google_drive: "Datasets, model checkpoints, large experiment outputs"
