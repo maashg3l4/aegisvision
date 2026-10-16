@@ -6,3 +6,9 @@
 - Implemented XML to YOLO conversion script (`src/data/prepare_yolo_dataset.py`).
 - Excluded `crazing_240` to perfectly match the historical 1,439 train / 360 val split.
 - Generated `data.yaml` with 6 NEU-DET classes.
+
+## [Wing 2.10] - GC10-DET generalization setup
+- Added `src/data/prepare_gc10_det.py` (PASCAL VOC -> YOLO, 8:1:1 split).
+- Converted 2,292 records -> 1,830 train / 227 val / 235 test.
+- Normalized 10_yaozhed -> 10_yaozhe; excluded garbage label 'd'.
+- Dataset persisted to Drive with hash verification.
