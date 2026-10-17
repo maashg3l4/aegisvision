@@ -12,3 +12,9 @@
 - Converted 2,292 records -> 1,830 train / 227 val / 235 test.
 - Normalized 10_yaozhed -> 10_yaozhe; excluded garbage label 'd'.
 - Dataset persisted to Drive with hash verification.
+
+## [Phase 5] - Project Finalization & Scientific Reporting
+- Documented successful NEU-DET routing (AUROC 0.82).
+- Documented GC10-DET negative transfer result (AUROC 0.53).
+- Documented Conformal Prediction failure at 22-shots.
+- Generated comprehensive `docs/reports/final_report.md`.
