@@ -6,7 +6,6 @@ import json
 import urllib.request
 import os
 from ultralytics import YOLO
-from scipy.stats import entropy as scipy_entropy
 
 # --- Auto-Download Models from GitHub ---
 def download_file(url, local_path):
@@ -50,7 +49,7 @@ def extract_features(results):
         'max_conf': float(scores.max()), 'mean_conf': float(scores.mean()),
         'std_conf': float(scores.std()), 'p90_conf': float(np.percentile(scores, 90)),
         'top1_gap': float(scores[0] - scores.mean()) if len(scores) > 1 else 0.0,
-        'conf_entropy': float(scipy_entropy(hist + 1e-9)),
+        'conf_entropy': float(-np.sum((hist / np.sum(hist)) * np.log2((hist / np.sum(hist)) + 1e-9))),
         'n_preds': len(scores), 'n_mid': int(((scores > 0.2) & (scores <= 0.5)).sum()),
         'n_high': int((scores > 0.5).sum()), 'mean_area': float(areas.mean()),
         'min_area': float(areas.min()), 'mean_ar': float(ars.mean()),
