@@ -2,16 +2,19 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install supervisor
+RUN apt-get update && apt-get install -y supervisor && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the source code
-COPY src/ ./src/
+# Copy the app code and supervisord config
+COPY . .
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Expose port 7860 (Hugging Face Spaces standard)
+# Hugging Face Spaces require port 7860
 EXPOSE 7860
 
-# Start FastAPI and Streamlit (using a simple process manager)
-# In production, you would use Gunicorn + Nginx, but this works for a demo
-CMD ["python", "src/api/main.py"]
+# Start supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
