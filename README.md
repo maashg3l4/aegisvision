@@ -1,5 +1,14 @@
 # 🛡️ AegisVision: Confidence-Aware Human-in-the-Loop Defect Inspection
 
+<div align="center">
+  
+  ### 🚀 [Click Here to Try the Live Interactive Demo](https://aegisvision-n84itsqjrquzfpkwu5x3d9.streamlit.app/)
+  
+</div>
+
+---
+
+
 **AegisVision** is a training-free, post-hoc routing framework for industrial steel surface defect detection. It aims to answer a critical safety question: *"When should a human inspector trust the AI, and when should they be asked to review?"*
 
 Built with PyTorch, YOLO11s, and Scikit-Learn. Fully reproducible.
