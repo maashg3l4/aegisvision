@@ -3,18 +3,29 @@ import cv2
 import numpy as np
 from PIL import Image
 import json
+import urllib.request
+import os
 from ultralytics import YOLO
 from scipy.stats import entropy as scipy_entropy
 
-# --- Load Models (Cached for performance) ---
+# --- Auto-Download Models from GitHub ---
+def download_file(url, local_path):
+    if not os.path.exists(local_path):
+        with st.spinner(f"Downloading {os.path.basename(local_path)}..."):
+            urllib.request.urlretrieve(url, local_path)
+
+MODEL_PATH = "/tmp/best.pt"
+POLICY_PATH = "/tmp/routing_policy_v2.json"
+MODEL_URL = "https://github.com/maashg3l4/aegisvision/releases/download/v1.0.0/best.pt"
+POLICY_URL = "https://github.com/maashg3l4/aegisvision/releases/download/v1.0.0/routing_policy_v2.json"
+
 @st.cache_resource
 def load_models():
-    # Update these paths if you move them to a cloud storage bucket
-    yolo_path = "/content/drive/MyDrive/AegisVision/runs/baseline_yolo11s/weights/best.pt"
-    policy_path = "/content/drive/MyDrive/AegisVision/policies/routing_policy_v2.json"
+    download_file(MODEL_URL, MODEL_PATH)
+    download_file(POLICY_URL, POLICY_PATH)
     
-    model = YOLO(yolo_path)
-    with open(policy_path) as f:
+    model = YOLO(MODEL_PATH)
+    with open(POLICY_PATH) as f:
         policy = json.load(f)
     return model, policy
 
@@ -60,16 +71,13 @@ if uploaded_file is not None:
     
     if st.button("Analyze Image"):
         with st.spinner("Running YOLO11s and Routing Policy..."):
-            # Run YOLO
             img_np = np.array(image)
             img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
             results = model(img_bgr, conf=0.001, verbose=False)[0]
             
-            # Extract Features & Score
             feats_dict = extract_features(results)
             x = np.array([feats_dict[f] for f in FEATURES])
             
-            # 15 features slicing
             mu = np.array(policy["scaler"]["mean"])[:15]
             sd = np.array(policy["scaler"]["scale"])[:15]
             w = np.array(policy["lr_model"]["coefficients"])[:15]
@@ -80,7 +88,6 @@ if uploaded_file is not None:
             
             decision = "HUMAN_REVIEW" if danger_score > 0.80 else "AUTO_ACCEPT"
             
-            # Output
             if decision == "HUMAN_REVIEW":
                 st.error(f"🔴 **HUMAN REVIEW REQUIRED** (Risk Score: {danger_score:.4f})")
             else:
