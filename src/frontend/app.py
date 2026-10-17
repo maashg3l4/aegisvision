@@ -74,6 +74,14 @@ if uploaded_file is not None:
             img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
             results = model(img_bgr, conf=0.001, verbose=False)[0]
             
+            # --- VISUALIZATION: Draw bounding boxes ---
+            annotated_bgr = results.plot(conf=True, line_width=1)
+            annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
+            
+            st.subheader("YOLO11s Detections")
+            st.image(annotated_rgb, caption="Detected Defects", use_column_width=True)
+            # -------------------------------------------
+            
             feats_dict = extract_features(results)
             x = np.array([feats_dict[f] for f in FEATURES])
             
