@@ -61,3 +61,4 @@ python src/evaluation/build_features.py --preds ./out/predictions.json --gt ./ou
 
 ## 📜 Citation
 *(AegisVision Paper Draft - In Progress, 2026)*
+<!-- Verified contribution graph -->
