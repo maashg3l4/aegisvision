@@ -15,7 +15,7 @@ def download_file(url, local_path):
 
 MODEL_PATH = "/tmp/best.pt"
 POLICY_PATH = "/tmp/routing_policy_v2.json"
-MODEL_URL = "https://github.com/maashg3l4/aegisvision/releases/download/v1.0.0/best.pt"
+MODEL_URL = "https://github.com/maashg3l4/aegisvision/releases/download/v1.0.1/best.pt"
 POLICY_URL = "https://github.com/maashg3l4/aegisvision/releases/download/v1.0.0/routing_policy_v2.json"
 
 @st.cache_resource
