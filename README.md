@@ -21,6 +21,19 @@ Built with PyTorch, YOLO11s, and Scikit-Learn. Fully reproducible.
 2. **Cross-Domain Failure:** When tested zero-shot on the GC10-DET dataset (severe resolution and texture shift), the policy failed (AUROC **0.536**). Deep YOLO semantic embeddings also failed.
 3. **The Calibration Limit:** Through Transductive Conformal Prediction, we mathematically demonstrated that **22 images are insufficient** to guarantee a 10% risk bound under this domain shift. A minimum of 90+ target images is required for statistical safety.
 
+
+### 4. The OOD Shield (Mathematical Safety)
+To prevent the model from hallucinating on out-of-distribution (OOD) images, we integrated an **Energy-Based OOD Detector**. By extracting the raw logits from the YOLO model, we compute an energy score for every image.
+
+- **In-Distribution (NEU-DET):** Mean Energy = `-1.73`
+- **Out-of-Distribution (GC10-DET):** Mean Energy = `+0.82`
+- **OOD Detection AUROC:** **`0.9524`**
+
+If an image has an energy score `> 0.0`, the system suppresses all bounding boxes and routes the image immediately to Human Review with a "System Confused" warning.
+
+![OOD Energy Distribution](assets/ood_energy_distribution.png)
+
+
 ---
 
 ## 📈 Visual Evidence
