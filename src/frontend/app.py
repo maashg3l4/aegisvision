@@ -74,8 +74,27 @@ if uploaded_file is not None:
             img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
             results = model(img_bgr, conf=0.001, verbose=False)[0]
             
+            # --- OOD SHIELD: Energy-Based Detection ---
+            is_ood = False
+            energy_score = 0.0
+            if len(results.boxes) > 0:
+                probs = results.boxes.conf.cpu().numpy()
+                probs = np.clip(probs, 1e-7, 1 - 1e-7)
+                logits = np.log(probs / (1 - probs))
+                energies = -np.log(np.sum(np.exp(logits)))
+                energy_score = float(np.max(energies))
+                
+                # If energy is positive, the model is hallucinating (OOD)
+                if energy_score > 0.0:
+                    is_ood = True
+            
             # --- VISUALIZATION: Draw bounding boxes ---
-            annotated_bgr = results.plot(conf=True, line_width=1)
+            # If OOD, we do not draw boxes. If normal, we draw them.
+            if is_ood:
+                st.warning("⚠️ System Confused: Out-of-Distribution Image Detected. Boxes suppressed.")
+                annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB) # Show original
+            else:
+                annotated_bgr = results.plot(conf=True, line_width=1)
             annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
             
             st.subheader("YOLO11s Detections")
@@ -93,12 +112,16 @@ if uploaded_file is not None:
             z = float(((x - mu) / sd) @ w + b)
             danger_score = 1.0 / (1.0 + np.exp(-z))
             
-            decision = "HUMAN_REVIEW" if danger_score > 0.80 else "AUTO_ACCEPT"
-            
-            if decision == "HUMAN_REVIEW":
-                st.error(f"🔴 **HUMAN REVIEW REQUIRED** (Risk Score: {danger_score:.4f})")
+            # --- OOD OVERRIDE ---
+            if is_ood:
+                decision = "HUMAN_REVIEW"
+                st.error(f"🔴 **HUMAN REVIEW REQUIRED** (OOD Shield Triggered - Energy: {energy_score:.2f})")
             else:
-                st.success(f"🟢 **AUTO-ACCEPTED** (Risk Score: {danger_score:.4f})")
+                decision = "HUMAN_REVIEW" if danger_score > 0.80 else "AUTO_ACCEPT"
+                if decision == "HUMAN_REVIEW":
+                    st.error(f"🔴 **HUMAN REVIEW REQUIRED** (Risk Score: {danger_score:.4f})")
+                else:
+                    st.success(f"🟢 **AUTO-ACCEPTED** (Risk Score: {danger_score:.4f})")
                 
             st.json({
                 "decision": decision,
