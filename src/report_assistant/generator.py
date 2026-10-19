@@ -1,7 +1,10 @@
 """AegisVision - Report Generator (RAG Foundation)."""
 import json
 
-def load_knowledge_base(path="src/report_assistant/knowledge_base.json"):
+import os
+def load_knowledge_base(path=None):
+    if path is None:
+        path = os.path.join(os.path.dirname(__file__), "knowledge_base.json")
     with open(path, "r") as f:
         return json.load(f)
 

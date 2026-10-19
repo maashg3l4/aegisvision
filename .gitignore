@@ -22,3 +22,7 @@ mlruns/
 data/raw/
 data/processed/
 data/external/
+
+# Python Cache
+__pycache__/
+*.pyc

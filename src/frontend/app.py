@@ -1,4 +1,8 @@
 import streamlit as st
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.report_assistant.generator import generate_report, load_knowledge_base
 import cv2
 import numpy as np
 from PIL import Image
@@ -128,3 +132,24 @@ if uploaded_file is not None:
                 "danger_score": round(danger_score, 4),
                 "num_predictions": feats_dict["n_preds"]
             })
+            
+            # --- REPORT ASSISTANT INTEGRATION ---
+            if not is_ood and len(results.boxes) > 0:
+                # Get the most confident defect class name
+                top_class_id = int(results.boxes.cls[0].item())
+                # NEU-DET classes mapping (ensure this matches your model)
+                CLASS_NAMES = ["crazing", "inclusion", "patches", "pitted_surface", "rolled-in_scale", "scratches"]
+                top_class_name = CLASS_NAMES[top_class_id] if top_class_id < len(CLASS_NAMES) else "unknown"
+                
+                try:
+                    kb = load_knowledge_base()
+                    report = generate_report(
+                        defect_class=top_class_name,
+                        confidence=float(results.boxes.conf[0].item()),
+                        danger_score=danger_score,
+                        kb=kb
+                    )
+                    st.subheader("🤖 Aegis Report Assistant")
+                    st.info(report)
+                except Exception as e:
+                    st.warning(f"Report Assistant error: {e}")
