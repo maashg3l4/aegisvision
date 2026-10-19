@@ -1,40 +1,72 @@
 import streamlit as st
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from src.report_assistant.generator import generate_report, load_knowledge_base
 import cv2
 import numpy as np
 from PIL import Image
 import json
 import urllib.request
 import os
+import sys
+import time
 from ultralytics import YOLO
 
-# --- Auto-Download Models from GitHub ---
-def download_file(url, local_path):
-    if not os.path.exists(local_path):
-        with st.spinner(f"Downloading {os.path.basename(local_path)}..."):
-            urllib.request.urlretrieve(url, local_path)
+# Add project root to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.report_assistant.generator import generate_report, load_knowledge_base
 
-MODEL_PATH = "/tmp/best.pt"
-POLICY_PATH = "/tmp/routing_policy_v2.json"
-MODEL_URL = "https://github.com/maashg3l4/aegisvision/releases/download/v1.0.1/best.pt"
-POLICY_URL = "https://github.com/maashg3l4/aegisvision/releases/download/v1.0.0/routing_policy_v2.json"
+# --- CUSTOM CSS FOR MIT-LEVEL UI ---
+st.markdown("""
+<style>
+    /* Fade-in animation */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .stApp { background-color: #0e1117; }
+    
+    /* Title Styling */
+    h1 { font-family: 'Inter', sans-serif; font-weight: 700; letter-spacing: -1px; }
+    
+    /* Report Card */
+    .report-card {
+        background: rgba(30, 41, 59, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 24px;
+        margin-top: 20px;
+        animation: fadeIn 0.6s ease-out;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    .report-title { color: #60a5fa; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .report-text { color: #e2e8f0; font-size: 15px; line-height: 1.6; }
+    .action-item { color: #f87171; font-weight: 600; margin-top: 10px; display: block; }
+    
+    /* Hide Streamlit Branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
 
+# --- LOAD MODELS ---
 @st.cache_resource
 def load_models():
-    download_file(MODEL_URL, MODEL_PATH)
-    download_file(POLICY_URL, POLICY_PATH)
+    model_url = "https://github.com/maashg3l4/aegisvision/releases/download/v1.0.1/best.pt"
+    policy_url = "https://github.com/maashg3l4/aegisvision/releases/download/v1.0.0/routing_policy_v2.json"
     
-    model = YOLO(MODEL_PATH)
-    with open(POLICY_PATH) as f:
+    if not os.path.exists("/tmp/best.pt"):
+        urllib.request.urlretrieve(model_url, "/tmp/best.pt")
+    if not os.path.exists("/tmp/policy.json"):
+        urllib.request.urlretrieve(policy_url, "/tmp/policy.json")
+        
+    model = YOLO("/tmp/best.pt")
+    with open("/tmp/policy.json") as f:
         policy = json.load(f)
     return model, policy
 
 model, policy = load_models()
+kb = load_knowledge_base()
 
-# --- 15 Live Features ---
+# --- FEATURE EXTRACTION ---
 FEATURES = ['max_conf','mean_conf','std_conf','p90_conf','top1_gap','conf_entropy',
             'n_preds','n_mid','n_high','mean_area','min_area','mean_ar','std_ar',
             'small_ratio','unique_classes_pred']
@@ -61,24 +93,26 @@ def extract_features(results):
         'unique_classes_pred': int(len(set(classes)))
     }
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="AegisVision", layout="wide")
-st.title("🛡️ AegisVision: Defect Inspection Assistant")
-st.markdown("Upload an image to get an instant risk assessment.")
+# --- UI ---
+st.title("AegisVision: Defect Inspection Assistant")
+st.markdown("<p style='color: #94a3b8; font-size: 16px;'>Upload an image for mathematical risk assessment.</p>", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_column_width=True)
     
-    if st.button("Analyze Image"):
-        with st.spinner("Running YOLO11s and Routing Policy..."):
+    col1, col2 = st.columns(2)
+    with col1:
+        st.image(image, caption="Original Upload", use_column_width=True)
+    
+    if st.button("Run Inspection", use_container_width=True):
+        with st.spinner("Analyzing with YOLO11s and 16-Feature Policy..."):
             img_np = np.array(image)
             img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
             results = model(img_bgr, conf=0.001, verbose=False)[0]
             
-            # --- OOD SHIELD: Energy-Based Detection ---
+            # --- OOD SHIELD ---
             is_ood = False
             energy_score = 0.0
             if len(results.boxes) > 0:
@@ -87,27 +121,28 @@ if uploaded_file is not None:
                 logits = np.log(probs / (1 - probs))
                 energies = -np.log(np.sum(np.exp(logits)))
                 energy_score = float(np.max(energies))
-                
-                # If energy is positive, the model is hallucinating (OOD)
                 if energy_score > 0.0:
                     is_ood = True
             
-            # --- VISUALIZATION: Draw bounding boxes ---
-            # If OOD, we do not draw boxes. If normal, we draw them.
+            # --- VISUAL FILTER (Only show boxes > 0.40 conf to user) ---
+            vis_results = results
+            if len(results.boxes) > 0:
+                high_conf_mask = results.boxes.conf > 0.40
+                vis_results = results[high_conf_mask]
+            
+            # Draw boxes
             if is_ood:
-                st.warning("⚠️ System Confused: Out-of-Distribution Image Detected. Boxes suppressed.")
-                annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB) # Show original
+                annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
             else:
-                annotated_bgr = results.plot(conf=True, line_width=1)
-            annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
-            
-            st.subheader("YOLO11s Detections")
-            st.image(annotated_rgb, caption="Detected Defects", use_column_width=True)
-            # -------------------------------------------
-            
+                annotated_bgr = vis_results.plot(conf=True, line_width=1)
+                annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
+                
+            with col2:
+                st.image(annotated_rgb, caption="Filtered Detections (Conf > 0.40)", use_column_width=True)
+                
+            # --- ROUTING LOGIC ---
             feats_dict = extract_features(results)
             x = np.array([feats_dict[f] for f in FEATURES])
-            
             mu = np.array(policy["scaler"]["mean"])[:15]
             sd = np.array(policy["scaler"]["scale"])[:15]
             w = np.array(policy["lr_model"]["coefficients"])[:15]
@@ -116,40 +151,41 @@ if uploaded_file is not None:
             z = float(((x - mu) / sd) @ w + b)
             danger_score = 1.0 / (1.0 + np.exp(-z))
             
-            # --- OOD OVERRIDE ---
+            # --- DECISION UI ---
+            st.markdown("---")
             if is_ood:
-                decision = "HUMAN_REVIEW"
-                st.error(f"🔴 **HUMAN REVIEW REQUIRED** (OOD Shield Triggered - Energy: {energy_score:.2f})")
+                st.error(f"OUT-OF-DISTRIBUTION DETECTED (Energy: {energy_score:.2f}) — MANUAL REVIEW REQUIRED")
             else:
-                decision = "HUMAN_REVIEW" if danger_score > 0.80 else "AUTO_ACCEPT"
-                if decision == "HUMAN_REVIEW":
-                    st.error(f"🔴 **HUMAN REVIEW REQUIRED** (Risk Score: {danger_score:.4f})")
+                if danger_score > 0.80:
+                    st.error(f"HUMAN REVIEW REQUIRED (Risk Score: {danger_score:.4f})")
                 else:
-                    st.success(f"🟢 **AUTO-ACCEPTED** (Risk Score: {danger_score:.4f})")
-                
-            st.json({
-                "decision": decision,
-                "danger_score": round(danger_score, 4),
-                "num_predictions": feats_dict["n_preds"]
-            })
+                    st.success(f"AUTO-ACCEPTED (Risk Score: {danger_score:.4f})")
             
-            # --- REPORT ASSISTANT INTEGRATION ---
+            # --- REPORT ASSISTANT (Custom HTML Card) ---
             if not is_ood and len(results.boxes) > 0:
-                # Get the most confident defect class name
                 top_class_id = int(results.boxes.cls[0].item())
-                # NEU-DET classes mapping (ensure this matches your model)
                 CLASS_NAMES = ["crazing", "inclusion", "patches", "pitted_surface", "rolled-in_scale", "scratches"]
                 top_class_name = CLASS_NAMES[top_class_id] if top_class_id < len(CLASS_NAMES) else "unknown"
                 
                 try:
-                    kb = load_knowledge_base()
-                    report = generate_report(
-                        defect_class=top_class_name,
-                        confidence=float(results.boxes.conf[0].item()),
-                        danger_score=danger_score,
-                        kb=kb
-                    )
-                    st.subheader("🤖 Aegis Report Assistant")
-                    st.info(report)
+                    report_text = generate_report(top_class_name, float(results.boxes.conf[0].item()), danger_score, kb)
+                    
+                    # Format report into HTML
+                    lines = report_text.strip().split("\n")
+                    html_content = "<div class='report-card'>"
+                    html_content += "<div class='report-title'>Aegis Report Assistant</div>"
+                    html_content += "<div class='report-text'>"
+                    
+                    for line in lines:
+                        if "RECOMMENDED ACTION" in line or "Inspect" in line:
+                            html_content += f"<span class='action-item'>{line.strip()}</span>"
+                        elif "===" in line:
+                            continue
+                        else:
+                            html_content += f"{line.strip()}<br>"
+                    
+                    html_content += "</div></div>"
+                    st.markdown(html_content, unsafe_allow_html=True)
+                    
                 except Exception as e:
                     st.warning(f"Report Assistant error: {e}")
