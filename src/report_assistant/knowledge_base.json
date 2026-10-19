@@ -1,0 +1,22 @@
+{
+    "crazing": {
+        "definition": "Fine network of cracks on the steel surface.",
+        "cause": "Thermal stress during rapid cooling or rolling.",
+        "action": "Inspect cooling spray nozzles and verify rolling temperature."
+    },
+    "inclusion": {
+        "definition": "Non-metallic particles embedded in the steel.",
+        "cause": "Slag or refractory material entering the molten steel.",
+        "action": "Review ladle cleanliness and tundish practices."
+    },
+    "rolled_pit": {
+        "definition": "Small, localized depressions on the surface.",
+        "cause": "Rolled-in scale or foreign material.",
+        "action": "Check descaling system pressure and roll condition."
+    },
+    "waist_folding": {
+        "definition": "Severe folding or overlapping of the steel edge.",
+        "cause": "Improper width reduction during hot rolling.",
+        "action": "Adjust edger roll gap and inspect side guides."
+    }
+}
