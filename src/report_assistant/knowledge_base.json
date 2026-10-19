@@ -18,5 +18,20 @@
         "definition": "Severe folding or overlapping of the steel edge.",
         "cause": "Improper width reduction during hot rolling.",
         "action": "Adjust edger roll gap and inspect side guides."
+    },
+    "patches": {
+        "definition": "Irregular, patch-like areas of discoloration or roughness on the steel surface.",
+        "cause": "Uneven cooling, oxidation, or localized scale buildup during the rolling process.",
+        "action": "Inspect the descaling nozzles and verify the cooling bed spray uniformity."
+    },
+    "pitted_surface": {
+        "definition": "Small, shallow craters or pits scattered across the surface.",
+        "cause": "Gas evolution during solidification or localized corrosion.",
+        "action": "Review the continuous casting parameters and check for moisture in the mold flux."
+    },
+    "scratches": {
+        "definition": "Linear grooves or abrasions on the steel surface.",
+        "cause": "Mechanical friction from guide rolls, conveyors, or handling equipment.",
+        "action": "Inspect the roll surfaces and check the tension on the conveyor belts."
     }
 }
