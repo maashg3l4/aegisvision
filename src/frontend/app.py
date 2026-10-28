@@ -176,16 +176,23 @@ if uploaded_file is not None:
                 top_class_id = int(results.boxes.cls[0].item())
                 CLASS_NAMES = ["crazing", "inclusion", "patches", "pitted_surface", "rolled-in_scale", "scratches"]
                 top_class_name = CLASS_NAMES[top_class_id] if top_class_id < len(CLASS_NAMES) else "unknown"
-                
+
                 try:
-                    report_text = generate_report(top_class_name, float(results.boxes.conf[0].item()), danger_score, kb)
-                    
+                    report_text = generate_report(
+                        defect_class=top_class_name,
+                        confidence=float(results.boxes.conf[0].item()),
+                        danger_score=danger_score,
+                        kb=kb,
+                        force_review=force_review
+                    )
+
                     # Format report into HTML
-                    lines = report_text.strip().split("\n")
+                    lines = report_text.strip().split("
+")
                     html_content = "<div class='report-card'>"
                     html_content += "<div class='report-title'>Aegis Report Assistant</div>"
                     html_content += "<div class='report-text'>"
-                    
+
                     for line in lines:
                         if "RECOMMENDED ACTION" in line or "Inspect" in line:
                             html_content += f"<span class='action-item'>{line.strip()}</span>"
@@ -193,7 +200,7 @@ if uploaded_file is not None:
                             continue
                         else:
                             html_content += f"{line.strip()}<br>"
-                    
+
                     html_content += "</div></div>"
                     st.markdown(html_content, unsafe_allow_html=True)
                     

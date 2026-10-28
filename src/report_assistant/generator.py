@@ -1,7 +1,7 @@
 """AegisVision - Report Generator (RAG Foundation)."""
 import json
-
 import os
+
 def load_knowledge_base(path=None):
     if path is None:
         path = os.path.join(os.path.dirname(__file__), "knowledge_base.json")
@@ -13,11 +13,11 @@ def generate_report(defect_class, confidence, danger_score, kb, force_review=Fal
     Generates a structured inspection report based on the detected defect.
     """
     info = kb.get(defect_class, None)
-    
+
     if not info:
         return f"Unknown defect class: {defect_class}. Manual inspection required."
 
-    # Determine severity based on danger_score (from our 16-feature policy)
+    # Determine severity based on danger_score AND safety override
     if force_review:
         severity = "CRITICAL"
         routing = "HUMAN REVIEW REQUIRED (SAFETY OVERRIDE)"
@@ -41,15 +41,9 @@ def generate_report(defect_class, confidence, danger_score, kb, force_review=Fal
     --- SCIENTIFIC ANALYSIS ---
     Definition: {info['definition']}
     Likely Root Cause: {info['cause']}
-    
+
     --- RECOMMENDED ACTION ---
     {info['action']}
     ====================================
     """
     return report
-
-if __name__ == "__main__":
-    kb = load_knowledge_base()
-    # Test the generator
-    test_report = generate_report("crazing", confidence=0.85, danger_score=0.91, kb=kb)
-    print(test_report)
