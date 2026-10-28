@@ -8,7 +8,7 @@ def load_knowledge_base(path=None):
     with open(path, "r") as f:
         return json.load(f)
 
-def generate_report(defect_class, confidence, danger_score, kb):
+def generate_report(defect_class, confidence, danger_score, kb, force_review=False):
     """
     Generates a structured inspection report based on the detected defect.
     """
@@ -18,7 +18,10 @@ def generate_report(defect_class, confidence, danger_score, kb):
         return f"Unknown defect class: {defect_class}. Manual inspection required."
 
     # Determine severity based on danger_score (from our 16-feature policy)
-    if danger_score > 0.8:
+    if force_review:
+        severity = "CRITICAL"
+        routing = "HUMAN REVIEW REQUIRED (SAFETY OVERRIDE)"
+    elif danger_score > 0.8:
         severity = "CRITICAL"
         routing = "HUMAN REVIEW REQUIRED"
     elif danger_score > 0.5:
