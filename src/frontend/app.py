@@ -153,8 +153,18 @@ if uploaded_file is not None:
             
             # --- DECISION UI ---
             st.markdown("---")
+            # --- SAFETY OVERRIDE LOGIC ---
+            CRITICAL_CLASSES = ["crazing", "rolled-in_scale", "scratches"]
+            top_class_id = int(results.boxes.cls[0].item()) if len(results.boxes) > 0 else -1
+            CLASS_NAMES = ["crazing", "inclusion", "patches", "pitted_surface", "rolled-in_scale", "scratches"]
+            top_class_name = CLASS_NAMES[top_class_id] if top_class_id >= 0 and top_class_id < len(CLASS_NAMES) else "unknown"
+            
+            force_review = top_class_name in CRITICAL_CLASSES
+
             if is_ood:
                 st.error(f"OUT-OF-DISTRIBUTION DETECTED (Energy: {energy_score:.2f}) — MANUAL REVIEW REQUIRED")
+            elif force_review:
+                st.error(f"HUMAN REVIEW REQUIRED (Critical Class: {top_class_name.upper()} detected) — Safety Override")
             else:
                 if danger_score > 0.80:
                     st.error(f"HUMAN REVIEW REQUIRED (Risk Score: {danger_score:.4f})")
