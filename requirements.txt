@@ -3,3 +3,5 @@ ultralytics==8.4.180
 opencv-python-headless==4.9.0.80
 Pillow>=11.2.1
 numpy==1.26.4
+scipy==1.12.0
+scikit-learn==1.4.2
