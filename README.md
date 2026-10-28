@@ -34,15 +34,21 @@ In industrial manufacturing, AI models fail silently. A YOLO model might confide
 
 ## 🏆 Verified Performance Metrics
 
-We rigorously tested the system on both lab-scale and industrial-scale data.
+We rigorously tested the system on both lab-scale and industrial-scale data. *(Note: Metrics are derived from 5-fold Out-Of-Fold cross-validation to ensure no data leakage).*
 
 | Metric | Result | Engineering Impact |
 | :--- | :--- | :--- |
 | **NEU-DET Baseline** | mAP50: `0.757` | Matches published YOLO11s benchmarks. |
 | **Severstal (Industrial)** | mAP50: `0.684` | **Beats** standard YOLOv8m baselines (`~0.647`). |
-| **Routing Signal (AUROC)** | `0.821` | The 16-feature model perfectly ranks dangerous errors. |
-| **OOD Detection (AUROC)** | `0.952` | The Energy Shield successfully identifies 95% of garbage images. |
-| **Review Budget Reduction** | `-51%` | At a 20% review budget, residual risk drops from 28% to 13%. |
+| **Routing Signal (AUROC)** | `0.821` | The 16-feature model achieves strong ranking capability for identifying "dangerous errors" (defined as high-confidence false positives or false negatives). |
+| **OOD Detection (AUROC)** | `0.952` | The Energy Shield successfully identifies 95% of out-of-distribution images. |
+| **Review Budget Reduction** | `-51%` | At a 20% review budget (72 images), residual risk on the accepted set drops from 28.4% (Max-Confidence baseline) to 13.8%. |
+
+### The 16 Deployable Features
+The routing policy does not use the raw image. It uses 16 prediction statistics extracted from the YOLO output to calculate risk:
+`max_conf`, `mean_conf`, `std_conf`, `p90_conf`, `top1_gap`, `conf_entropy`, `n_preds`, `n_mid`, `n_high`, `mean_area`, `min_area`, `mean_ar`, `std_ar`, `small_ratio`, `unique_classes_pred`, `class_mismatch`.
+
+---
 
 ## 📈 Visual Evidence
 
