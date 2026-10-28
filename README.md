@@ -15,7 +15,7 @@
   <br>
   <br>
   
-  ### 🚀 <a href="https://aegisvision-n84itsqjrquzfpkwu5x3d9.streamlit.app/">Click Here to Try the Live Interactive Demo</a>
+  ### 🚀 <a href="https://aegisvision-g5kfpmyzhsnppkuhyzltue.streamlit.app/">Click Here to Try the Live Interactive Demo</a>
 </div>
 
 ---
