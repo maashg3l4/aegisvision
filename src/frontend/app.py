@@ -7,9 +7,12 @@ import urllib.request
 import os
 import sys
 from ultralytics import YOLO
+from jsonschema import validate, ValidationError
+from groq import Groq
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.report_assistant.generator import generate_report, load_knowledge_base
+from src.report_assistant.vlm_prompt import SYSTEM_PROMPT, build_prompt
 
 # --- CUSTOM CSS ---
 st.markdown('''
@@ -53,9 +56,7 @@ model, policy = load_models()
 kb = load_knowledge_base()
 
 # --- FEATURE EXTRACTION ---
-FEATURES = ['max_conf','mean_conf','std_conf','p90_conf','top1_gap','conf_entropy',
-            'n_preds','n_mid','n_high','mean_area','min_area','mean_ar','std_ar',
-            'small_ratio','unique_classes_pred']
+FEATURES = ['max_conf','mean_conf','std_conf','p90_conf','top1_gap','conf_entropy', 'n_preds','n_mid','n_high','mean_area','min_area','mean_ar','std_ar', 'small_ratio','unique_classes_pred']
 
 def extract_features(results):
     boxes = results.boxes
@@ -83,6 +84,10 @@ def extract_features(results):
 st.title('AegisVision: Defect Inspection Assistant')
 st.markdown("<p style='color: #94a3b8; font-size: 16px;'>Upload an image for mathematical risk assessment.</p>", unsafe_allow_html=True)
 
+with st.sidebar:
+    st.header('Configuration')
+    groq_key = st.text_input('Groq API Key:', type='password', help='Required for AI Chat Assistant')
+
 uploaded_file = st.file_uploader('', type=['jpg', 'jpeg', 'png'])
 
 if uploaded_file is not None:
@@ -97,7 +102,6 @@ if uploaded_file is not None:
             img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
             results = model(img_bgr, conf=0.001, verbose=False)[0]
 
-            # --- OOD SHIELD ---
             is_ood = False
             energy_score = 0.0
             if len(results.boxes) > 0:
@@ -109,7 +113,6 @@ if uploaded_file is not None:
                 if energy_score > 0.0:
                     is_ood = True
 
-            # --- VISUAL FILTER ---
             vis_results = results
             if len(results.boxes) > 0:
                 high_conf_mask = results.boxes.conf > 0.40
@@ -122,9 +125,8 @@ if uploaded_file is not None:
                 annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
 
             with col2:
-                st.image(annotated_rgb, caption='Filtered Detections (Conf > 0.40)', use_column_width=True)
+                st.image(annotated_rgb, caption='Filtered Detections', use_column_width=True)
 
-            # --- ROUTING LOGIC ---
             feats_dict = extract_features(results)
             x = np.array([feats_dict[f] for f in FEATURES])
             mu = np.array(policy['scaler']['mean'])[:15]
@@ -134,30 +136,32 @@ if uploaded_file is not None:
             z = float(((x - mu) / sd) @ w + b)
             danger_score = 1.0 / (1.0 + np.exp(-z))
 
-            # --- SAFETY OVERRIDE ---
-            CRITICAL_CLASSES = ['crazing', 'rolled-in_scale', 'scratches']
-            top_class_id = int(results.boxes.cls[0].item()) if len(results.boxes) > 0 else -1
+            CRITICAL_CLASSES = ['crazing', 'rolled-in_scale', 'scratches', 'crease']
             CLASS_NAMES = [
-        "crazing", "inclusion", "patches", "pitted_surface", "rolled-in_scale", "scratches",
-        "punching_hole", "welding_line", "crescent_gap", "water_spot", "oil_spot", 
-        "silk_spot", "rolled_pit", "crease", "waist_folding"
-    ]
+                'crazing', 'inclusion', 'patches', 'pitted_surface', 'rolled-in_scale', 'scratches',
+                'punching_hole', 'welding_line', 'crescent_gap', 'water_spot', 'oil_spot',
+                'silk_spot', 'rolled_pit', 'crease', 'waist_folding'
+            ]
+
+            top_class_id = int(results.boxes.cls[0].item()) if len(results.boxes) > 0 else -1
             top_class_name = CLASS_NAMES[top_class_id] if top_class_id >= 0 and top_class_id < len(CLASS_NAMES) else 'unknown'
             force_review = top_class_name in CRITICAL_CLASSES
 
-            # --- DECISION UI ---
             st.markdown('---')
             if is_ood:
-                st.error(f'OUT-OF-DISTRIBUTION DETECTED (Energy: {energy_score:.2f}) — MANUAL REVIEW REQUIRED')
+                st.error(f'OUT-OF-DISTRIBUTION DETECTED (Energy: {energy_score:.2f}) - MANUAL REVIEW REQUIRED')
+                decision = 'INSUFFICIENT_EVIDENCE'
             elif force_review:
-                st.error(f'HUMAN REVIEW REQUIRED (Critical Class: {top_class_name.upper()} detected) — Safety Override')
+                st.error(f'HUMAN REVIEW REQUIRED (Critical Class: {top_class_name.upper()} detected) - Safety Override')
+                decision = 'REQUIRES_INSPECTION'
             else:
                 if danger_score > 0.80:
                     st.error(f'HUMAN REVIEW REQUIRED (Risk Score: {danger_score:.4f})')
+                    decision = 'REQUIRES_INSPECTION'
                 else:
                     st.success(f'AUTO-ACCEPTED (Risk Score: {danger_score:.4f})')
+                    decision = 'AUTO_ASSESSED'
 
-            # --- REPORT ASSISTANT ---
             if not is_ood and len(results.boxes) > 0:
                 try:
                     report_text = generate_report(top_class_name, float(results.boxes.conf[0].item()), danger_score, kb, force_review)
@@ -174,3 +178,57 @@ if uploaded_file is not None:
                     st.markdown(html, unsafe_allow_html=True)
                 except Exception as e:
                     st.warning(f'Report Assistant error: {e}')
+
+            # --- CONVERSATIONAL XAI CHAT ---
+            st.markdown('---')
+            st.subheader('Ask Aegis')
+
+            if not groq_key:
+                st.info('Please enter a Groq API Key in the sidebar to enable the AI Chat Assistant.')
+            else:
+                client = Groq(api_key=groq_key)
+                inspection_record = {
+                    'inspection_id': 'live_inspection',
+                    'detections': [
+                        {'class_name': CLASS_NAMES[int(box.cls[0])], 'confidence': float(box.conf[0])}
+                        for box in results.boxes
+                    ] if len(results.boxes) > 0 else [],
+                    'uncertainty_assessment': {
+                        'risk_score': float(danger_score),
+                        'is_ood': bool(is_ood),
+                        'safety_override_triggered': bool(force_review)
+                    },
+                    'routing_decision': decision
+                }
+
+                user_question = st.chat_input('Ask about this inspection...')
+
+                if user_question:
+                    with st.spinner('Aegis is thinking...'):
+                        try:
+                            prompt = build_prompt(inspection_record, user_question)
+                            chat_completion = client.chat.completions.create(
+                                messages=[
+                                    {'role': 'system', 'content': SYSTEM_PROMPT},
+                                    {'role': 'user', 'content': prompt}
+                                ],
+                                model='openai/gpt-oss-20b',
+                                temperature=0.0,
+                                response_format={'type': 'json_object'}
+                            )
+                            raw_res = chat_completion.choices[0].message.content
+                            res_json = json.loads(raw_res)
+                            schema_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'configs', 'schemas', 'chat_response.schema.json')
+                            with open(schema_path, 'r') as f:
+                                schema = json.load(f)
+                            validate(instance=res_json, schema=schema)
+
+                            if res_json['is_abstained']:
+                                st.warning(f"Aegis Abstained: {res_json['abstain_reason']}")
+                            else:
+                                st.success(res_json['answer_text'])
+                                st.caption(f"Sources: {', '.join(res_json['evidence_sources'])}")
+                        except ValidationError:
+                            st.error('Aegis Guardrail Blocked: The AI hallucinated a response. This was rejected.')
+                        except Exception as e:
+                            st.error(f'Chat Error: {e}')
