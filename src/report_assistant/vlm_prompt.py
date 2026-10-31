@@ -1,6 +1,7 @@
 """AegisVision - VLM Prompt Template.
 This module defines the strict system instructions for the LLM.
 """
+import json  # <--- THE FIX: Added the missing import
 
 SYSTEM_PROMPT = """You are AegisVision, an industrial defect inspection assistant.
 Your job is to answer the user's question using ONLY the provided JSON Inspection Record.
