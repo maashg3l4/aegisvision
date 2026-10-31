@@ -220,7 +220,26 @@ if 'inspection_record' in st.session_state:
     if not groq_key:
         st.info('Please enter a Groq API Key in the sidebar to enable the AI Chat Assistant.')
     else:
-        user_question = st.chat_input('Ask about this inspection...')
+        # --- SUGGESTED QUESTIONS (UX FIX) ---
+        st.markdown("**Suggested Questions:**")
+        col1, col2, col3 = st.columns(3)
+        suggested_q = None
+        with col1:
+            if st.button("What defect was found?", use_container_width=True):
+                suggested_q = "What defect was found?"
+        with col2:
+            if st.button("Why is this flagged?", use_container_width=True):
+                suggested_q = "Why is this image sent for human review?"
+        with col3:
+            if st.button("What is the risk score?", use_container_width=True):
+                suggested_q = "What is the risk score of this inspection?"
+                
+        # Initialize user_question as None, then check buttons or chat input
+        user_question = suggested_q 
+        
+        chat_input_val = st.chat_input('Ask about this inspection...')
+        if chat_input_val:
+            user_question = chat_input_val
 
         if user_question:
             # Append user message to history and display immediately
