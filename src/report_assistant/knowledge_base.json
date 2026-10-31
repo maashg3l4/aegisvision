@@ -9,29 +9,69 @@
         "cause": "Slag or refractory material entering the molten steel.",
         "action": "Review ladle cleanliness and tundish practices."
     },
-    "rolled_pit": {
-        "definition": "Small, localized depressions on the surface.",
-        "cause": "Rolled-in scale or foreign material.",
-        "action": "Check descaling system pressure and roll condition."
-    },
-    "waist_folding": {
-        "definition": "Severe folding or overlapping of the steel edge.",
-        "cause": "Improper width reduction during hot rolling.",
-        "action": "Adjust edger roll gap and inspect side guides."
-    },
     "patches": {
-        "definition": "Irregular, patch-like areas of discoloration or roughness on the steel surface.",
-        "cause": "Uneven cooling, oxidation, or localized scale buildup during the rolling process.",
-        "action": "Inspect the descaling nozzles and verify the cooling bed spray uniformity."
+        "definition": "Irregular, patch-like areas of discoloration or roughness.",
+        "cause": "Uneven cooling, oxidation, or localized scale buildup.",
+        "action": "Inspect descaling nozzles and verify cooling bed spray uniformity."
     },
     "pitted_surface": {
         "definition": "Small, shallow craters or pits scattered across the surface.",
         "cause": "Gas evolution during solidification or localized corrosion.",
-        "action": "Review the continuous casting parameters and check for moisture in the mold flux."
+        "action": "Review continuous casting parameters and check for moisture in mold flux."
+    },
+    "rolled-in_scale": {
+        "definition": "Scale pressed into the steel surface during rolling.",
+        "cause": "Insufficient descaling or high-pressure water failure.",
+        "action": "Check descaling system pressure and roll condition."
     },
     "scratches": {
         "definition": "Linear grooves or abrasions on the steel surface.",
-        "cause": "Mechanical friction from guide rolls, conveyors, or handling equipment.",
-        "action": "Inspect the roll surfaces and check the tension on the conveyor belts."
+        "cause": "Mechanical friction from guide rolls or handling equipment.",
+        "action": "Inspect roll surfaces and check conveyor belt tension."
+    },
+    "punching_hole": {
+        "definition": "Holes or perforations caused by punching machinery.",
+        "cause": "Incorrect punch alignment or worn-out tooling.",
+        "action": "Inspect punching tools and verify alignment."
+    },
+    "welding_line": {
+        "definition": "Visible weld seams or lines on the steel.",
+        "cause": "Improper welding parameters or seam tracking.",
+        "action": "Check welding current/voltage and inspect seam tracking sensors."
+    },
+    "crescent_gap": {
+        "definition": "Crescent-shaped gaps or voids on the edge.",
+        "cause": "Improper strip tension or edge trimming issues.",
+        "action": "Adjust tension rollers and inspect edge trimming blades."
+    },
+    "water_spot": {
+        "definition": "Stains or spots caused by water droplets.",
+        "cause": "Condensation or inadequate drying after cooling.",
+        "action": "Inspect drying systems and check for leaks in cooling lines."
+    },
+    "oil_spot": {
+        "definition": "Dark stains or spots caused by oil contamination.",
+        "cause": "Lubricant leakage from machinery or hydraulic lines.",
+        "action": "Inspect hydraulic systems and clean lubricant applicators."
+    },
+    "silk_spot": {
+        "definition": "Fine, thread-like spots or patterns on the surface.",
+        "cause": "Inclusions or micro-structural anomalies rolled into the steel.",
+        "action": "Review steel composition and casting parameters."
+    },
+    "rolled_pit": {
+        "definition": "Small, localized depressions caused by rolled-in debris.",
+        "cause": "Foreign material (scale, slag) pressed into the surface.",
+        "action": "Improve descaling and check for debris on the rolling path."
+    },
+    "crease": {
+        "definition": "Severe folding or overlapping of the steel surface.",
+        "cause": "Incorrect roll gap or excessive tension during rolling.",
+        "action": "Adjust roll gap and verify strip tension."
+    },
+    "waist_folding": {
+        "definition": "Folding along the waist or middle of the steel strip.",
+        "cause": "Improper width reduction or guide misalignment.",
+        "action": "Adjust edger roll gap and inspect side guides."
     }
 }

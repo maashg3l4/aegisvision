@@ -137,7 +137,11 @@ if uploaded_file is not None:
             # --- SAFETY OVERRIDE ---
             CRITICAL_CLASSES = ['crazing', 'rolled-in_scale', 'scratches']
             top_class_id = int(results.boxes.cls[0].item()) if len(results.boxes) > 0 else -1
-            CLASS_NAMES = ['crazing', 'inclusion', 'patches', 'pitted_surface', 'rolled-in_scale', 'scratches']
+            CLASS_NAMES = [
+        "crazing", "inclusion", "patches", "pitted_surface", "rolled-in_scale", "scratches",
+        "punching_hole", "welding_line", "crescent_gap", "water_spot", "oil_spot", 
+        "silk_spot", "rolled_pit", "crease", "waist_folding"
+    ]
             top_class_name = CLASS_NAMES[top_class_id] if top_class_id >= 0 and top_class_id < len(CLASS_NAMES) else 'unknown'
             force_review = top_class_name in CRITICAL_CLASSES
 
