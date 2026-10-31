@@ -84,12 +84,16 @@ def extract_features(results):
 st.title('AegisVision: Defect Inspection Assistant')
 st.markdown("<p style='color: #94a3b8; font-size: 16px;'>Upload an image for mathematical risk assessment.</p>", unsafe_allow_html=True)
 
-# THE FIX: Use key='groq_api_key' to persist the key across reruns
+# Persist API key
 with st.sidebar:
     st.header('Configuration')
     st.text_input('Groq API Key:', type='password', help='Required for AI Chat Assistant', key='groq_api_key')
 
 groq_key = st.session_state.get('groq_api_key', '')
+
+# Initialize chat history in session state
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
 uploaded_file = st.file_uploader('', type=['jpg', 'jpeg', 'png'])
 
@@ -100,6 +104,9 @@ if uploaded_file is not None:
         st.image(image, caption='Original Upload', use_column_width=True)
 
     if st.button('Run Inspection', use_container_width=True):
+        # CLEAR CHAT HISTORY ON NEW INSPECTION
+        st.session_state.messages = []
+        
         with st.spinner('Analyzing with YOLO11s and 16-Feature Policy...'):
             img_np = np.array(image)
             img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -165,7 +172,7 @@ if uploaded_file is not None:
                     st.success(f'AUTO-ACCEPTED (Risk Score: {danger_score:.4f})')
                     decision = 'AUTO_ASSESSED'
 
-            # --- Save state for chat ---
+            # Save state for chat
             st.session_state['inspection_record'] = {
                 'inspection_id': 'live_inspection',
                 'detections': [
@@ -197,45 +204,63 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.warning(f'Report Assistant error: {e}')
 
-# --- CONVERSATIONAL XAI CHAT (Moved outside the button click) ---
+# --- CONVERSATIONAL XAI CHAT ---
 if 'inspection_record' in st.session_state:
     st.markdown('---')
     st.subheader('Ask Aegis')
 
+    # Display chat history
+    for message in st.session_state.messages:
+        with st.chat_message(message['role']):
+            st.markdown(message['content'])
+
     if not groq_key:
         st.info('Please enter a Groq API Key in the sidebar to enable the AI Chat Assistant.')
     else:
-        client = Groq(api_key=groq_key)
-        inspection_record = st.session_state['inspection_record']
-
         user_question = st.chat_input('Ask about this inspection...')
 
         if user_question:
-            with st.spinner('Aegis is thinking...'):
-                try:
-                    prompt = build_prompt(inspection_record, user_question)
-                    chat_completion = client.chat.completions.create(
-                        messages=[
-                            {'role': 'system', 'content': SYSTEM_PROMPT},
-                            {'role': 'user', 'content': prompt}
-                        ],
-                        model='openai/gpt-oss-20b',
-                        temperature=0.0,
-                        response_format={'type': 'json_object'}
-                    )
-                    raw_res = chat_completion.choices[0].message.content
-                    res_json = json.loads(raw_res)
-                    schema_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'configs', 'schemas', 'chat_response.schema.json')
-                    with open(schema_path, 'r') as f:
-                        schema = json.load(f)
-                    validate(instance=res_json, schema=schema)
+            # Append user message to history and display immediately
+            st.session_state.messages.append({'role': 'user', 'content': user_question})
+            with st.chat_message('user'):
+                st.markdown(user_question)
 
-                    if res_json['is_abstained']:
-                        st.warning(f"Aegis Abstained: {res_json['abstain_reason']}")
-                    else:
-                        st.success(res_json['answer_text'])
-                        st.caption(f"Sources: {', '.join(res_json['evidence_sources'])}")
-                except ValidationError:
-                    st.error('Aegis Guardrail Blocked: The AI hallucinated a response. This was rejected.')
-                except Exception as e:
-                    st.error(f'Chat Error: {e}')
+            with st.chat_message('assistant'):
+                with st.spinner('Aegis is thinking...'):
+                    try:
+                        client = Groq(api_key=groq_key)
+                        prompt = build_prompt(st.session_state['inspection_record'], user_question)
+                        chat_completion = client.chat.completions.create(
+                            messages=[
+                                {'role': 'system', 'content': SYSTEM_PROMPT},
+                                {'role': 'user', 'content': prompt}
+                            ],
+                            model='openai/gpt-oss-20b',
+                            temperature=0.0,
+                            response_format={'type': 'json_object'}
+                        )
+                        raw_res = chat_completion.choices[0].message.content
+                        res_json = json.loads(raw_res)
+                        schema_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'configs', 'schemas', 'chat_response.schema.json')
+                        with open(schema_path, 'r') as f:
+                            schema = json.load(f)
+                        validate(instance=res_json, schema=schema)
+
+                        if res_json['is_abstained']:
+                            final_answer = f"⚠️ **Aegis Abstained**: {res_json['abstain_reason']}"
+                        else:
+                            final_answer = res_json['answer_text']
+                            if res_json['evidence_sources']:
+                                final_answer += f"\n\n*Sources: {', '.join(res_json['evidence_sources'])}*"
+                        
+                        st.markdown(final_answer)
+                        st.session_state.messages.append({'role': 'assistant', 'content': final_answer})
+
+                    except ValidationError:
+                        err = '🛑 **Guardrail Blocked**: The AI hallucinated a response. This was rejected.'
+                        st.error(err)
+                        st.session_state.messages.append({'role': 'assistant', 'content': err})
+                    except Exception as e:
+                        err = f'❌ **Chat Error**: {e}'
+                        st.error(err)
+                        st.session_state.messages.append({'role': 'assistant', 'content': err})
