@@ -1,0 +1,134 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "AegisVision Formal Inspection Report",
+    "type": "object",
+    "properties": {
+        "report_metadata": {
+            "type": "object",
+            "properties": {
+                "report_id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "inspection_id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "generated_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "model_version": {
+                    "type": "string"
+                },
+                "policy_version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "report_id",
+                "inspection_id",
+                "generated_at",
+                "model_version",
+                "policy_version"
+            ]
+        },
+        "deterministic_evidence": {
+            "type": "object",
+            "properties": {
+                "image_reference": {
+                    "type": "string",
+                    "description": "Path or hash of the original image"
+                },
+                "detections_count": {
+                    "type": "integer"
+                },
+                "highest_risk_score": {
+                    "type": "number"
+                },
+                "routing_decision": {
+                    "type": "string",
+                    "enum": [
+                        "AUTO_ASSESSED",
+                        "REQUIRES_INSPECTION",
+                        "INSUFFICIENT_EVIDENCE"
+                    ]
+                }
+            },
+            "required": [
+                "image_reference",
+                "detections_count",
+                "highest_risk_score",
+                "routing_decision"
+            ]
+        },
+        "ai_narrative": {
+            "type": "object",
+            "properties": {
+                "summary_text": {
+                    "type": "string",
+                    "description": "The VLM-generated or rule-based text."
+                },
+                "source_type": {
+                    "type": "string",
+                    "enum": [
+                        "VLM_Grounded",
+                        "Deterministic_Fallback"
+                    ]
+                },
+                "evidence_sources": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "summary_text",
+                "source_type"
+            ]
+        },
+        "human_signoff": {
+            "type": "object",
+            "properties": {
+                "inspector_name": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "PENDING",
+                        "APPROVED",
+                        "REJECTED",
+                        "ESCALATED"
+                    ]
+                },
+                "comments": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                },
+                "signed_at": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "date-time"
+                }
+            },
+            "required": [
+                "status"
+            ]
+        }
+    },
+    "required": [
+        "report_metadata",
+        "deterministic_evidence",
+        "ai_narrative",
+        "human_signoff"
+    ]
+}
