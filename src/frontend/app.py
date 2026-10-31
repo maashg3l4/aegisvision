@@ -162,6 +162,21 @@ if uploaded_file is not None:
                     st.success(f'AUTO-ACCEPTED (Risk Score: {danger_score:.4f})')
                     decision = 'AUTO_ASSESSED'
 
+            # --- Save state for chat ---
+            st.session_state['inspection_record'] = {
+                'inspection_id': 'live_inspection',
+                'detections': [
+                    {'class_name': CLASS_NAMES[int(box.cls[0])], 'confidence': float(box.conf[0])}
+                    for box in results.boxes
+                ] if len(results.boxes) > 0 else [],
+                'uncertainty_assessment': {
+                    'risk_score': float(danger_score),
+                    'is_ood': bool(is_ood),
+                    'safety_override_triggered': bool(force_review)
+                },
+                'routing_decision': decision
+            }
+
             if not is_ood and len(results.boxes) > 0:
                 try:
                     report_text = generate_report(top_class_name, float(results.boxes.conf[0].item()), danger_score, kb, force_review)
@@ -187,19 +202,7 @@ if uploaded_file is not None:
                 st.info('Please enter a Groq API Key in the sidebar to enable the AI Chat Assistant.')
             else:
                 client = Groq(api_key=groq_key)
-                inspection_record = {
-                    'inspection_id': 'live_inspection',
-                    'detections': [
-                        {'class_name': CLASS_NAMES[int(box.cls[0])], 'confidence': float(box.conf[0])}
-                        for box in results.boxes
-                    ] if len(results.boxes) > 0 else [],
-                    'uncertainty_assessment': {
-                        'risk_score': float(danger_score),
-                        'is_ood': bool(is_ood),
-                        'safety_override_triggered': bool(force_review)
-                    },
-                    'routing_decision': decision
-                }
+                inspection_record = st.session_state['inspection_record']
 
                 user_question = st.chat_input('Ask about this inspection...')
 
