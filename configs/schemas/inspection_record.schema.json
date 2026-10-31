@@ -1,0 +1,154 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "AegisVision Inspection Record",
+    "type": "object",
+    "properties": {
+        "inspection_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for this inspection event."
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp of when the image was processed."
+        },
+        "image_metadata": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string"
+                },
+                "width": {
+                    "type": "integer"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "source_dataset": {
+                    "type": "string",
+                    "enum": [
+                        "NEU-DET",
+                        "GC10-DET",
+                        "Severstal",
+                        "Unified",
+                        "Unknown"
+                    ]
+                }
+            },
+            "required": [
+                "filename",
+                "width",
+                "height"
+            ]
+        },
+        "model_metadata": {
+            "type": "object",
+            "properties": {
+                "model_version": {
+                    "type": "string",
+                    "description": "e.g., yolo11s_unified_15class"
+                },
+                "checkpoint_hash": {
+                    "type": "string"
+                },
+                "inference_time_ms": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "model_version"
+            ]
+        },
+        "detections": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "class_name": {
+                        "type": "string"
+                    },
+                    "class_id": {
+                        "type": "integer"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                    },
+                    "bbox": {
+                        "type": "array",
+                        "items": {
+                            "type": "number"
+                        },
+                        "minItems": 4,
+                        "maxItems": 4
+                    },
+                    "mask_area_px": {
+                        "type": "integer",
+                        "description": "Required if segmentation is used."
+                    }
+                },
+                "required": [
+                    "class_name",
+                    "class_id",
+                    "confidence",
+                    "bbox"
+                ]
+            }
+        },
+        "uncertainty_assessment": {
+            "type": "object",
+            "properties": {
+                "risk_score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "ood_energy_score": {
+                    "type": "number"
+                },
+                "is_ood": {
+                    "type": "boolean"
+                },
+                "safety_override_triggered": {
+                    "type": "boolean"
+                },
+                "critical_class_detected": {
+                    "type": [
+                        "string",
+                        "null"
+                    ]
+                }
+            },
+            "required": [
+                "risk_score",
+                "is_ood",
+                "safety_override_triggered"
+            ]
+        },
+        "routing_decision": {
+            "type": "string",
+            "enum": [
+                "AUTO_ASSESSED",
+                "REQUIRES_INSPECTION",
+                "INSUFFICIENT_EVIDENCE"
+            ],
+            "description": "The final action dictated by the routing policy."
+        },
+        "policy_version": {
+            "type": "string",
+            "description": "Version of the routing policy applied (e.g., v3.0.0_unified15)."
+        }
+    },
+    "required": [
+        "inspection_id",
+        "timestamp",
+        "image_metadata",
+        "model_metadata",
+        "detections",
+        "uncertainty_assessment",
+        "routing_decision",
+        "policy_version"
+    ]
+}
