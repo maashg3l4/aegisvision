@@ -131,7 +131,7 @@ if uploaded_file is not None:
                 if energy_score > 0.0:
                     is_ood = True
 
-            # --- SMART VISUAL FILTER ---
+            # --- TWO-TIER VISUAL FILTER ---
             vis_results = results
             if len(results.boxes) > 0:
                 boxes_to_keep = []
@@ -139,7 +139,12 @@ if uploaded_file is not None:
                     conf = float(box.conf[0])
                     cls_id = int(box.cls[0])
                     box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else 'unknown'
-                    if conf > 0.40 or box_class_name in CRITICAL_CLASSES:
+                    
+                    # Rule 1: Normal threshold for all boxes
+                    if conf > 0.40:
+                        boxes_to_keep.append(i)
+                    # Rule 2: Lower threshold for critical classes to show the real danger
+                    elif box_class_name in CRITICAL_CLASSES and conf > 0.30:
                         boxes_to_keep.append(i)
                 
                 if boxes_to_keep:
