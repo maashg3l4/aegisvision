@@ -14,6 +14,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from src.report_assistant.generator import generate_report, load_knowledge_base
 from src.report_assistant.vlm_prompt import SYSTEM_PROMPT, build_prompt
 
+# --- GLOBAL CONSTANTS ---
+CLASS_NAMES = [
+    'crazing', 'inclusion', 'patches', 'pitted_surface', 'rolled-in_scale', 'scratches',
+    'punching_hole', 'welding_line', 'crescent_gap', 'water_spot', 'oil_spot',
+    'silk_spot', 'rolled_pit', 'crease', 'waist_folding'
+]
+CRITICAL_CLASSES = ['crazing', 'rolled-in_scale', 'scratches', 'crease']
+
 # --- CUSTOM CSS ---
 st.markdown('''
 <style>
@@ -84,17 +92,12 @@ def extract_features(results):
 st.title('AegisVision: Defect Inspection Assistant')
 st.markdown("<p style='color: #94a3b8; font-size: 16px;'>Upload an image for mathematical risk assessment.</p>", unsafe_allow_html=True)
 
-# --- API KEY MANAGEMENT (SECRETS FIRST) ---
-# Check Streamlit Secrets first, then fallback to sidebar
-groq_key = st.secrets.get("GROQ_API_KEY", "")
+with st.sidebar:
+    st.header('Configuration')
+    st.text_input('Groq API Key:', type='password', help='Required for AI Chat Assistant', key='groq_api_key')
 
-if not groq_key:
-    with st.sidebar:
-        st.header('Configuration')
-        st.text_input('Groq API Key:', type='password', help='Required for AI Chat Assistant', key='groq_api_key')
-    groq_key = st.session_state.get('groq_api_key', '')
+groq_key = st.session_state.get('groq_api_key', '')
 
-# Initialize chat history in session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
 
@@ -107,7 +110,6 @@ if uploaded_file is not None:
         st.image(image, caption='Original Upload', use_column_width=True)
 
     if st.button('Run Inspection', use_container_width=True):
-        # CLEAR CHAT HISTORY ON NEW INSPECTION
         st.session_state.messages = []
         
         with st.spinner('Analyzing with YOLO11s and 16-Feature Policy...'):
@@ -129,17 +131,12 @@ if uploaded_file is not None:
             # --- SMART VISUAL FILTER ---
             vis_results = results
             if len(results.boxes) > 0:
-                # Draw boxes if confidence > 0.40 OR if the class is critical
-                # (so the inspector can see the danger, even if the AI is unsure)
-                CRITICAL_CLASSES_FOR_VIS = ['crazing', 'rolled-in_scale', 'scratches', 'crease']
                 boxes_to_keep = []
                 for i, box in enumerate(results.boxes):
                     conf = float(box.conf[0])
                     cls_id = int(box.cls[0])
-                    # Top class name for this specific box
-                    box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else "unknown"
-                    
-                    if conf > 0.40 or box_class_name in CRITICAL_CLASSES_FOR_VIS:
+                    box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else 'unknown'
+                    if conf > 0.40 or box_class_name in CRITICAL_CLASSES:
                         boxes_to_keep.append(i)
                 
                 if boxes_to_keep:
@@ -163,13 +160,6 @@ if uploaded_file is not None:
             z = float(((x - mu) / sd) @ w + b)
             danger_score = 1.0 / (1.0 + np.exp(-z))
 
-            CRITICAL_CLASSES = ['crazing', 'rolled-in_scale', 'scratches', 'crease']
-            CLASS_NAMES = [
-                'crazing', 'inclusion', 'patches', 'pitted_surface', 'rolled-in_scale', 'scratches',
-                'punching_hole', 'welding_line', 'crescent_gap', 'water_spot', 'oil_spot',
-                'silk_spot', 'rolled_pit', 'crease', 'waist_folding'
-            ]
-
             top_class_id = int(results.boxes.cls[0].item()) if len(results.boxes) > 0 else -1
             top_class_name = CLASS_NAMES[top_class_id] if top_class_id >= 0 and top_class_id < len(CLASS_NAMES) else 'unknown'
             force_review = top_class_name in CRITICAL_CLASSES
@@ -189,7 +179,6 @@ if uploaded_file is not None:
                     st.success(f'AUTO-ACCEPTED (Risk Score: {danger_score:.4f})')
                     decision = 'AUTO_ASSESSED'
 
-            # Save state for chat
             st.session_state['inspection_record'] = {
                 'inspection_id': 'live_inspection',
                 'detections': [
@@ -226,7 +215,6 @@ if 'inspection_record' in st.session_state:
     st.markdown('---')
     st.subheader('Ask Aegis')
 
-    # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message['role']):
             st.markdown(message['content'])
@@ -234,29 +222,25 @@ if 'inspection_record' in st.session_state:
     if not groq_key:
         st.info('Please enter a Groq API Key in the sidebar to enable the AI Chat Assistant.')
     else:
-        # --- SUGGESTED QUESTIONS (UX FIX) ---
-        st.markdown("**Suggested Questions:**")
+        st.markdown('**Suggested Questions:**')
         col1, col2, col3 = st.columns(3)
         suggested_q = None
         with col1:
-            if st.button("What defect was found?", use_container_width=True):
-                suggested_q = "What defect was found?"
+            if st.button('What defect was found?', use_container_width=True):
+                suggested_q = 'What defect was found?'
         with col2:
-            if st.button("Why is this flagged?", use_container_width=True):
-                suggested_q = "Why is this image sent for human review?"
+            if st.button('Why is this flagged?', use_container_width=True):
+                suggested_q = 'Why is this image sent for human review?'
         with col3:
-            if st.button("What is the risk score?", use_container_width=True):
-                suggested_q = "What is the risk score of this inspection?"
+            if st.button('What is the risk score?', use_container_width=True):
+                suggested_q = 'What is the risk score of this inspection?'
                 
-        # Initialize user_question as None, then check buttons or chat input
         user_question = suggested_q 
-        
         chat_input_val = st.chat_input('Ask about this inspection...')
         if chat_input_val:
             user_question = chat_input_val
 
         if user_question:
-            # Append user message to history and display immediately
             st.session_state.messages.append({'role': 'user', 'content': user_question})
             with st.chat_message('user'):
                 st.markdown(user_question)
