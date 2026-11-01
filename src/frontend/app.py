@@ -126,10 +126,24 @@ if uploaded_file is not None:
                 if energy_score > 0.0:
                     is_ood = True
 
+            # --- SMART VISUAL FILTER ---
             vis_results = results
             if len(results.boxes) > 0:
-                high_conf_mask = results.boxes.conf > 0.40
-                vis_results = results[high_conf_mask]
+                # Draw boxes if confidence > 0.40 OR if the class is critical
+                # (so the inspector can see the danger, even if the AI is unsure)
+                CRITICAL_CLASSES_FOR_VIS = ['crazing', 'rolled-in_scale', 'scratches', 'crease']
+                boxes_to_keep = []
+                for i, box in enumerate(results.boxes):
+                    conf = float(box.conf[0])
+                    cls_id = int(box.cls[0])
+                    # Top class name for this specific box
+                    box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else "unknown"
+                    
+                    if conf > 0.40 or box_class_name in CRITICAL_CLASSES_FOR_VIS:
+                        boxes_to_keep.append(i)
+                
+                if boxes_to_keep:
+                    vis_results = results[boxes_to_keep]
 
             if is_ood:
                 annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
