@@ -92,11 +92,14 @@ def extract_features(results):
 st.title('AegisVision: Defect Inspection Assistant')
 st.markdown("<p style='color: #94a3b8; font-size: 16px;'>Upload an image for mathematical risk assessment.</p>", unsafe_allow_html=True)
 
-with st.sidebar:
-    st.header('Configuration')
-    st.text_input('Groq API Key:', type='password', help='Required for AI Chat Assistant', key='groq_api_key')
+# --- API KEY MANAGEMENT (SECRETS FIRST) ---
+groq_key = st.secrets.get('GROQ_API_KEY', '')
 
-groq_key = st.session_state.get('groq_api_key', '')
+if not groq_key:
+    with st.sidebar:
+        st.header('Configuration')
+        st.text_input('Groq API Key:', type='password', help='Required for AI Chat Assistant', key='groq_api_key')
+    groq_key = st.session_state.get('groq_api_key', '')
 
 if 'messages' not in st.session_state:
     st.session_state.messages = []
