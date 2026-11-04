@@ -13,6 +13,7 @@ from groq import Groq
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.report_assistant.generator import generate_report, load_knowledge_base
 from src.report_assistant.vlm_prompt import SYSTEM_PROMPT, build_prompt
+from src.flywheel.manager import FlywheelManager
 
 # --- GLOBAL CONSTANTS ---
 CLASS_NAMES = [
@@ -62,6 +63,7 @@ def load_models():
 
 model, policy = load_models()
 kb = load_knowledge_base()
+fm = FlywheelManager()
 
 # --- FEATURE EXTRACTION ---
 FEATURES = ['max_conf','mean_conf','std_conf','p90_conf','top1_gap','conf_entropy', 'n_preds','n_mid','n_high','mean_area','min_area','mean_ar','std_ar', 'small_ratio','unique_classes_pred']
@@ -92,9 +94,7 @@ def extract_features(results):
 st.title('AegisVision: Defect Inspection Assistant')
 st.markdown("<p style='color: #94a3b8; font-size: 16px;'>Upload an image for mathematical risk assessment.</p>", unsafe_allow_html=True)
 
-# --- API KEY MANAGEMENT (SECRETS FIRST) ---
 groq_key = st.secrets.get('GROQ_API_KEY', '')
-
 if not groq_key:
     with st.sidebar:
         st.header('Configuration')
@@ -131,7 +131,6 @@ if uploaded_file is not None:
                 if energy_score > 0.0:
                     is_ood = True
 
-            # --- TWO-TIER VISUAL FILTER ---
             vis_results = results
             if len(results.boxes) > 0:
                 boxes_to_keep = []
@@ -139,12 +138,7 @@ if uploaded_file is not None:
                     conf = float(box.conf[0])
                     cls_id = int(box.cls[0])
                     box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else 'unknown'
-                    
-                    # Rule 1: Normal threshold for all boxes
-                    if conf > 0.40:
-                        boxes_to_keep.append(i)
-                    # Rule 2: Lower threshold for critical classes to show the real danger
-                    elif box_class_name in CRITICAL_CLASSES and conf > 0.30:
+                    if conf > 0.40 or box_class_name in CRITICAL_CLASSES:
                         boxes_to_keep.append(i)
                 
                 if boxes_to_keep:
@@ -217,6 +211,28 @@ if uploaded_file is not None:
                     st.markdown(html, unsafe_allow_html=True)
                 except Exception as e:
                     st.warning(f'Report Assistant error: {e}')
+
+            # --- DATA FLYWHEEL FEEDBACK ---
+            st.markdown('---')
+            st.subheader('Inspector Feedback')
+            st.caption('Your feedback trains the next version of the model.')
+            
+            temp_img_path = '/tmp/temp_upload.jpg'
+            cv2.imwrite(temp_img_path, img_bgr)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button('✅ Correct', use_container_width=True):
+                    fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'CORRECT')
+                    st.success('Feedback saved. Thank you!')
+            with col2:
+                if st.button('❌ False Positive', use_container_width=True):
+                    fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'FALSE_POSITIVE')
+                    st.success('Feedback saved. Thank you!')
+            with col3:
+                if st.button('⚠️ Missed Defect', use_container_width=True):
+                    fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'MISSED_DEFECT')
+                    st.success('Feedback saved. Thank you!')
 
 # --- CONVERSATIONAL XAI CHAT ---
 if 'inspection_record' in st.session_state:
