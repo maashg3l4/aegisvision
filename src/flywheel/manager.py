@@ -10,8 +10,15 @@ import cv2
 import numpy as np
 from datetime import datetime
 
-DRIVE_ROOT = "/content/drive/MyDrive/AegisVision/Data_Flywheel"
-DB_PATH = "/content/drive/MyDrive/AegisVision/data/flywheel/aegis_flywheel.db"
+import sys
+# Detect if we are running in Streamlit Cloud or Colab
+if 'google.colab' in sys.modules:
+    DRIVE_ROOT = "/content/drive/MyDrive/AegisVision/Data_Flywheel"
+    DB_PATH = "/content/drive/MyDrive/AegisVision/data/flywheel/aegis_flywheel.db"
+else:
+    # Streamlit Cloud fallback (ephemeral storage)
+    DRIVE_ROOT = "/tmp/AegisVision_Data_Flywheel"
+    DB_PATH = "/tmp/aegis_flywheel.db"
 
 class FlywheelManager:
     def __init__(self):
