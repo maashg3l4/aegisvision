@@ -63,7 +63,13 @@ def load_models():
 
 model, policy = load_models()
 kb = load_knowledge_base()
-fm = FlywheelManager()
+# Safe initialization for Streamlit Cloud (No Drive access)
+try:
+    fm = FlywheelManager()
+    flywheel_available = True
+except Exception as e:
+    print(f"Warning: Flywheel Manager could not initialize Drive. Error: {e}")
+    flywheel_available = False
 
 # --- FEATURE EXTRACTION ---
 FEATURES = ['max_conf','mean_conf','std_conf','p90_conf','top1_gap','conf_entropy', 'n_preds','n_mid','n_high','mean_area','min_area','mean_ar','std_ar', 'small_ratio','unique_classes_pred']
@@ -223,8 +229,11 @@ if uploaded_file is not None:
             col1, col2, col3 = st.columns(3)
             with col1:
                 if st.button('✅ Correct', use_container_width=True):
-                    fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'CORRECT')
-                    st.success('Feedback saved. Thank you!')
+                    if flywheel_available:
+                        fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'CORRECT')
+                        st.success('Feedback saved to Drive/SQLite. Thank you!')
+                    else:
+                        st.info('Feedback received! (Demo Mode: Drive not mounted on Streamlit Cloud)')
             with col2:
                 if st.button('❌ False Positive', use_container_width=True):
                     fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'FALSE_POSITIVE')
