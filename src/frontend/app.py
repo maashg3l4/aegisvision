@@ -234,22 +234,31 @@ if st.session_state.inspection_results is not None:
     with col1:
         if st.button('✅ Correct', use_container_width=True):
             if flywheel_available:
-                fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'CORRECT')
-                st.success('Feedback saved to Supabase. Thank you!')
+                try:
+                    fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'CORRECT')
+                    st.success('Feedback saved to Supabase. Thank you!')
+                except Exception as e:
+                    st.error(f'Supabase Error: {e}')
             else:
                 st.info('Feedback received! (Demo Mode)')
     with col2:
         if st.button('❌ False Positive', use_container_width=True):
             if flywheel_available:
-                fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'FALSE_POSITIVE')
-                st.success('Feedback saved to Supabase. Thank you!')
+                try:
+                    fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'FALSE_POSITIVE')
+                    st.success('Feedback saved to Supabase. Thank you!')
+                except Exception as e:
+                    st.error(f'Supabase Error: {e}')
             else:
                 st.info('Feedback received! (Demo Mode)')
     with col3:
         if st.button('⚠️ Missed Defect', use_container_width=True):
             if flywheel_available:
-                fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'MISSED_DEFECT')
-                st.success('Feedback saved to Supabase. Thank you!')
+                try:
+                    fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'MISSED_DEFECT')
+                    st.success('Feedback saved to Supabase. Thank you!')
+                except Exception as e:
+                    st.error(f'Supabase Error: {e}')
             else:
                 st.info('Feedback received! (Demo Mode)')
 
