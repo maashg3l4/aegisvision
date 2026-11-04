@@ -95,6 +95,12 @@ def extract_features(results):
         'unique_classes_pred': int(len(set(classes)))
     }
 
+# --- STATE MANAGEMENT ---
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+if 'inspection_results' not in st.session_state:
+    st.session_state.inspection_results = None
+
 # --- UI ---
 st.title('AegisVision: Defect Inspection Assistant')
 st.markdown("<p style='color: #94a3b8; font-size: 16px;'>Upload an image for mathematical risk assessment.</p>", unsafe_allow_html=True)
@@ -106,157 +112,152 @@ if not groq_key:
         st.text_input('Groq API Key:', type='password', help='Required for AI Chat Assistant', key='groq_api_key')
     groq_key = st.session_state.get('groq_api_key', '')
 
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-
 uploaded_file = st.file_uploader('', type=['jpg', 'jpeg', 'png'])
 
-if uploaded_file is not None:
+if st.button('Run Inspection', use_container_width=True) and uploaded_file is not None:
     image = Image.open(uploaded_file).convert('RGB')
+    img_np = np.array(image)
+    img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+    
+    with st.spinner('Analyzing...'):
+        results = model(img_bgr, conf=0.001, verbose=False)[0]
+        
+        is_ood = False
+        energy_score = 0.0
+        if len(results.boxes) > 0:
+            probs = results.boxes.conf.cpu().numpy()
+            probs = np.clip(probs, 1e-7, 1 - 1e-7)
+            logits = np.log(probs / (1 - probs))
+            energies = -np.log(np.sum(np.exp(logits)))
+            energy_score = float(np.max(energies))
+            if energy_score > 0.0:
+                is_ood = True
+
+        vis_results = results
+        if len(results.boxes) > 0:
+            boxes_to_keep = []
+            for i, box in enumerate(results.boxes):
+                conf = float(box.conf[0])
+                cls_id = int(box.cls[0])
+                box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else 'unknown'
+                threshold = 0.30 if box_class_name in CRITICAL_CLASSES else 0.40
+                if conf >= threshold:
+                    boxes_to_keep.append(i)
+            if boxes_to_keep:
+                vis_results = results[boxes_to_keep]
+
+        if is_ood:
+            annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        else:
+            annotated_bgr = vis_results.plot(conf=True, line_width=1)
+            annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
+
+        feats_dict = extract_features(results)
+        x = np.array([feats_dict[f] for f in FEATURES])
+        mu = np.array(policy['scaler']['mean'])[:15]
+        sd = np.array(policy['scaler']['scale'])[:15]
+        w = np.array(policy['lr_model']['coefficients'])[:15]
+        b = policy['lr_model']['intercept']
+        z = float(((x - mu) / sd) @ w + b)
+        danger_score = 1.0 / (1.0 + np.exp(-z))
+
+        top_class_id = int(results.boxes.cls[0].item()) if len(results.boxes) > 0 else -1
+        top_class_name = CLASS_NAMES[top_class_id] if top_class_id >= 0 and top_class_id < len(CLASS_NAMES) else 'unknown'
+        force_review = top_class_name in CRITICAL_CLASSES
+
+        if is_ood:
+            decision = 'INSUFFICIENT_EVIDENCE'
+        elif force_review:
+            decision = 'REQUIRES_INSPECTION'
+        elif danger_score > 0.80:
+            decision = 'REQUIRES_INSPECTION'
+        else:
+            decision = 'AUTO_ASSESSED'
+
+        # Save to Session State
+        st.session_state.inspection_results = {
+            'image': image,
+            'results': results,
+            'is_ood': is_ood,
+            'energy_score': energy_score,
+            'danger_score': danger_score,
+            'top_class_name': top_class_name,
+            'force_review': force_review,
+            'decision': decision,
+            'annotated_rgb': annotated_rgb
+        }
+        st.session_state.messages = []
+
+# --- RENDER RESULTS (FROM STATE) ---
+if st.session_state.inspection_results is not None:
+    res = st.session_state.inspection_results
+    
     col1, col2 = st.columns(2)
     with col1:
-        st.image(image, caption='Original Upload', use_column_width=True)
+        st.image(res['image'], caption='Original Upload', use_column_width=True)
+    with col2:
+        st.image(res['annotated_rgb'], caption='Filtered Detections', use_column_width=True)
 
-    if st.button('Run Inspection', use_container_width=True):
-        st.session_state.messages = []
-        
-        with st.spinner('Analyzing with YOLO11s and 16-Feature Policy...'):
-            img_np = np.array(image)
-            img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-            results = model(img_bgr, conf=0.001, verbose=False)[0]
+    st.markdown('---')
+    if res['is_ood']:
+        st.error(f'OUT-OF-DISTRIBUTION DETECTED (Energy: {res["energy_score"]:.2f}) - MANUAL REVIEW REQUIRED')
+    elif res['force_review']:
+        st.error(f'HUMAN REVIEW REQUIRED (Critical Class: {res["top_class_name"].upper()} detected) - Safety Override')
+    elif res['danger_score'] > 0.80:
+        st.error(f'HUMAN REVIEW REQUIRED (Risk Score: {res["danger_score"]:.4f})')
+    else:
+        st.success(f'AUTO-ACCEPTED (Risk Score: {res["danger_score"]:.4f})')
 
-            is_ood = False
-            energy_score = 0.0
-            if len(results.boxes) > 0:
-                probs = results.boxes.conf.cpu().numpy()
-                probs = np.clip(probs, 1e-7, 1 - 1e-7)
-                logits = np.log(probs / (1 - probs))
-                energies = -np.log(np.sum(np.exp(logits)))
-                energy_score = float(np.max(energies))
-                if energy_score > 0.0:
-                    is_ood = True
-
-            # --- THE ULTIMATE VISUAL FILTER ---
-            vis_results = results
-            if len(results.boxes) > 0:
-                boxes_to_keep = []
-                for i, box in enumerate(results.boxes):
-                    conf = float(box.conf[0])
-                    cls_id = int(box.cls[0])
-                    box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else 'unknown'
-                    
-                    # If it's critical, threshold is 0.30. Otherwise, 0.40.
-                    threshold = 0.30 if box_class_name in CRITICAL_CLASSES else 0.40
-                    
-                    if conf >= threshold:
-                        boxes_to_keep.append(i)
-                
-                if boxes_to_keep:
-                    vis_results = results[boxes_to_keep]
-
-            if is_ood:
-                annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-            else:
-                annotated_bgr = vis_results.plot(conf=True, line_width=1)
-                annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
-
-            with col2:
-                st.image(annotated_rgb, caption='Filtered Detections', use_column_width=True)
-
-            feats_dict = extract_features(results)
-            x = np.array([feats_dict[f] for f in FEATURES])
-            mu = np.array(policy['scaler']['mean'])[:15]
-            sd = np.array(policy['scaler']['scale'])[:15]
-            w = np.array(policy['lr_model']['coefficients'])[:15]
-            b = policy['lr_model']['intercept']
-            z = float(((x - mu) / sd) @ w + b)
-            danger_score = 1.0 / (1.0 + np.exp(-z))
-
-            top_class_id = int(results.boxes.cls[0].item()) if len(results.boxes) > 0 else -1
-            top_class_name = CLASS_NAMES[top_class_id] if top_class_id >= 0 and top_class_id < len(CLASS_NAMES) else 'unknown'
-            force_review = top_class_name in CRITICAL_CLASSES
-
-            st.markdown('---')
-            if is_ood:
-                st.error(f'OUT-OF-DISTRIBUTION DETECTED (Energy: {energy_score:.2f}) - MANUAL REVIEW REQUIRED')
-                decision = 'INSUFFICIENT_EVIDENCE'
-            elif force_review:
-                st.error(f'HUMAN REVIEW REQUIRED (Critical Class: {top_class_name.upper()} detected) - Safety Override')
-                decision = 'REQUIRES_INSPECTION'
-            else:
-                if danger_score > 0.80:
-                    st.error(f'HUMAN REVIEW REQUIRED (Risk Score: {danger_score:.4f})')
-                    decision = 'REQUIRES_INSPECTION'
+    if not res['is_ood'] and len(res['results'].boxes) > 0:
+        try:
+            report_text = generate_report(res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], kb, res['force_review'])
+            lines = report_text.strip().split('\n')
+            html = "<div class='report-card'><div class='report-title'>Aegis Report Assistant</div><div class='report-text'>"
+            for line in lines:
+                if 'RECOMMENDED ACTION' in line or 'Inspect' in line:
+                    html += f"<span class='action-item'>{line.strip()}</span>"
+                elif '===' in line:
+                    continue
                 else:
-                    st.success(f'AUTO-ACCEPTED (Risk Score: {danger_score:.4f})')
-                    decision = 'AUTO_ASSESSED'
+                    html += f"{line.strip()}<br>"
+            html += '</div></div>'
+            st.markdown(html, unsafe_allow_html=True)
+        except Exception as e:
+            st.warning(f'Report Assistant error: {e}')
 
-            st.session_state['inspection_record'] = {
-                'inspection_id': 'live_inspection',
-                'detections': [
-                    {'class_name': CLASS_NAMES[int(box.cls[0])], 'confidence': float(box.conf[0])}
-                    for box in results.boxes
-                ] if len(results.boxes) > 0 else [],
-                'uncertainty_assessment': {
-                    'risk_score': float(danger_score),
-                    'is_ood': bool(is_ood),
-                    'safety_override_triggered': bool(force_review)
-                },
-                'routing_decision': decision
-            }
+    st.markdown('---')
+    st.subheader('Inspector Feedback')
+    temp_img_path = '/tmp/temp_upload.jpg'
+    cv2.imwrite(temp_img_path, cv2.cvtColor(np.array(res['image']), cv2.COLOR_RGB2BGR))
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button('✅ Correct', use_container_width=True):
+            if flywheel_available:
+                fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'CORRECT')
+                st.success('Feedback saved to Supabase. Thank you!')
+            else:
+                st.info('Feedback received! (Demo Mode)')
+    with col2:
+        if st.button('❌ False Positive', use_container_width=True):
+            if flywheel_available:
+                fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'FALSE_POSITIVE')
+                st.success('Feedback saved to Supabase. Thank you!')
+            else:
+                st.info('Feedback received! (Demo Mode)')
+    with col3:
+        if st.button('⚠️ Missed Defect', use_container_width=True):
+            if flywheel_available:
+                fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'MISSED_DEFECT')
+                st.success('Feedback saved to Supabase. Thank you!')
+            else:
+                st.info('Feedback received! (Demo Mode)')
 
-            if not is_ood and len(results.boxes) > 0:
-                try:
-                    report_text = generate_report(top_class_name, float(results.boxes.conf[0].item()), danger_score, kb, force_review)
-                    lines = report_text.strip().split('\n')
-                    html = "<div class='report-card'><div class='report-title'>Aegis Report Assistant</div><div class='report-text'>"
-                    for line in lines:
-                        if 'RECOMMENDED ACTION' in line or 'Inspect' in line:
-                            html += f"<span class='action-item'>{line.strip()}</span>"
-                        elif '===' in line:
-                            continue
-                        else:
-                            html += f"{line.strip()}<br>"
-                    html += '</div></div>'
-                    st.markdown(html, unsafe_allow_html=True)
-                except Exception as e:
-                    st.warning(f'Report Assistant error: {e}')
-
-            st.markdown('---')
-            st.subheader('Inspector Feedback')
-            st.caption('Your feedback trains the next version of the model.')
-            
-            temp_img_path = '/tmp/temp_upload.jpg'
-            cv2.imwrite(temp_img_path, img_bgr)
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button('✅ Correct', use_container_width=True):
-                    if flywheel_available:
-                        fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'CORRECT')
-                        st.success('Feedback saved to Drive/SQLite. Thank you!')
-                    else:
-                        st.info('Feedback received! (Demo Mode)')
-            with col2:
-                if st.button('❌ False Positive', use_container_width=True):
-                    if flywheel_available:
-                        fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'FALSE_POSITIVE')
-                        st.success('Feedback saved to Drive/SQLite. Thank you!')
-                    else:
-                        st.info('Feedback received! (Demo Mode)')
-            with col3:
-                if st.button('⚠️ Missed Defect', use_container_width=True):
-                    if flywheel_available:
-                        fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'MISSED_DEFECT')
-                        st.success('Feedback saved to Drive/SQLite. Thank you!')
-                    else:
-                        st.info('Feedback received! (Demo Mode)')
-
-# --- CONVERSATIONAL XAI CHAT ---
-if 'inspection_record' in st.session_state:
+# --- CHAT ---
+if st.session_state.inspection_results is not None:
     st.markdown('---')
     st.subheader('Ask Aegis')
-
+    
     for message in st.session_state.messages:
         with st.chat_message(message['role']):
             st.markdown(message['content'])
@@ -291,12 +292,15 @@ if 'inspection_record' in st.session_state:
                 with st.spinner('Aegis is thinking...'):
                     try:
                         client = Groq(api_key=groq_key)
-                        prompt = build_prompt(st.session_state['inspection_record'], user_question)
+                        inspection_record = {
+                            'inspection_id': 'live',
+                            'detections': [{'class_name': CLASS_NAMES[int(b.cls[0])], 'confidence': float(b.conf[0])} for b in st.session_state.inspection_results['results'].boxes],
+                            'uncertainty_assessment': {'risk_score': st.session_state.inspection_results['danger_score'], 'is_ood': st.session_state.inspection_results['is_ood'], 'safety_override_triggered': st.session_state.inspection_results['force_review']},
+                            'routing_decision': st.session_state.inspection_results['decision']
+                        }
+                        prompt = build_prompt(inspection_record, user_question)
                         chat_completion = client.chat.completions.create(
-                            messages=[
-                                {'role': 'system', 'content': SYSTEM_PROMPT},
-                                {'role': 'user', 'content': prompt}
-                            ],
+                            messages=[{'role': 'system', 'content': SYSTEM_PROMPT}, {'role': 'user', 'content': prompt}],
                             model='openai/gpt-oss-20b',
                             temperature=0.0,
                             response_format={'type': 'json_object'}
@@ -317,12 +321,5 @@ if 'inspection_record' in st.session_state:
                         
                         st.markdown(final_answer)
                         st.session_state.messages.append({'role': 'assistant', 'content': final_answer})
-
-                    except ValidationError:
-                        err = '🛑 **Guardrail Blocked**: The AI hallucinated a response. This was rejected.'
-                        st.error(err)
-                        st.session_state.messages.append({'role': 'assistant', 'content': err})
                     except Exception as e:
-                        err = f'❌ **Chat Error**: {e}'
-                        st.error(err)
-                        st.session_state.messages.append({'role': 'assistant', 'content': err})
+                        st.error(f'Chat Error: {e}')
