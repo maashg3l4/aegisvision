@@ -63,12 +63,11 @@ def load_models():
 
 model, policy = load_models()
 kb = load_knowledge_base()
-# Safe initialization for Streamlit Cloud (No Drive access)
+
 try:
     fm = FlywheelManager()
     flywheel_available = True
 except Exception as e:
-    print(f"Warning: Flywheel Manager could not initialize Drive. Error: {e}")
     flywheel_available = False
 
 # --- FEATURE EXTRACTION ---
@@ -137,6 +136,7 @@ if uploaded_file is not None:
                 if energy_score > 0.0:
                     is_ood = True
 
+            # --- THE ULTIMATE VISUAL FILTER ---
             vis_results = results
             if len(results.boxes) > 0:
                 boxes_to_keep = []
@@ -144,7 +144,11 @@ if uploaded_file is not None:
                     conf = float(box.conf[0])
                     cls_id = int(box.cls[0])
                     box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else 'unknown'
-                    if conf > 0.40 or box_class_name in CRITICAL_CLASSES:
+                    
+                    # If it's critical, threshold is 0.30. Otherwise, 0.40.
+                    threshold = 0.30 if box_class_name in CRITICAL_CLASSES else 0.40
+                    
+                    if conf >= threshold:
                         boxes_to_keep.append(i)
                 
                 if boxes_to_keep:
@@ -218,7 +222,6 @@ if uploaded_file is not None:
                 except Exception as e:
                     st.warning(f'Report Assistant error: {e}')
 
-            # --- DATA FLYWHEEL FEEDBACK ---
             st.markdown('---')
             st.subheader('Inspector Feedback')
             st.caption('Your feedback trains the next version of the model.')
@@ -233,15 +236,21 @@ if uploaded_file is not None:
                         fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'CORRECT')
                         st.success('Feedback saved to Drive/SQLite. Thank you!')
                     else:
-                        st.info('Feedback received! (Demo Mode: Drive not mounted on Streamlit Cloud)')
+                        st.info('Feedback received! (Demo Mode)')
             with col2:
                 if st.button('❌ False Positive', use_container_width=True):
-                    fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'FALSE_POSITIVE')
-                    st.success('Feedback saved. Thank you!')
+                    if flywheel_available:
+                        fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'FALSE_POSITIVE')
+                        st.success('Feedback saved to Drive/SQLite. Thank you!')
+                    else:
+                        st.info('Feedback received! (Demo Mode)')
             with col3:
                 if st.button('⚠️ Missed Defect', use_container_width=True):
-                    fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'MISSED_DEFECT')
-                    st.success('Feedback saved. Thank you!')
+                    if flywheel_available:
+                        fm.save_feedback(temp_img_path, top_class_name, float(results.boxes.conf[0].item()) if len(results.boxes) > 0 else 0.0, danger_score, 'MISSED_DEFECT')
+                        st.success('Feedback saved to Drive/SQLite. Thank you!')
+                    else:
+                        st.info('Feedback received! (Demo Mode)')
 
 # --- CONVERSATIONAL XAI CHAT ---
 if 'inspection_record' in st.session_state:
