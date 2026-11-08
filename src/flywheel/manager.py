@@ -2,13 +2,15 @@
 Handles image storage, PII redaction, metadata logging, and GDPR erasure requests.
 """
 import os
+import json
 import sqlite3
 import uuid
-import shutil
-import time
 import cv2
 import numpy as np
 from datetime import datetime
+from urllib.error import HTTPError
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 import sys
 # Detect if we are running in Streamlit Cloud or Colab
@@ -21,11 +23,55 @@ else:
     DB_PATH = "/tmp/aegis_flywheel.db"
 
 class FlywheelManager:
-    def __init__(self):
+    STORAGE_BUCKET = "defect-images"
+
+    def __init__(self, supabase_url=None, supabase_key=None):
+        self.supabase_url = supabase_url or os.environ.get("SUPABASE_URL")
+        self.supabase_key = supabase_key or os.environ.get("SUPABASE_KEY")
         os.makedirs(DRIVE_ROOT, exist_ok=True)
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         self._init_db()
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+    def _storage_request(self, method, object_path, body=None, content_type=None):
+        if method not in ("POST", "DELETE"):
+            raise ValueError(f"Unsupported Supabase Storage method: {method}")
+        if not self.supabase_url or not self.supabase_key:
+            raise RuntimeError(
+                "Supabase storage is not configured. Set SUPABASE_URL and SUPABASE_KEY."
+            )
+
+        encoded_path = quote(object_path, safe="/")
+        if method == "POST":
+            endpoint = f"{self.supabase_url.rstrip('/')}/storage/v1/object/{self.STORAGE_BUCKET}/{encoded_path}"
+        else:
+            endpoint = f"{self.supabase_url.rstrip('/')}/storage/v1/object/{self.STORAGE_BUCKET}"
+        headers = {
+            "apikey": self.supabase_key,
+            "Authorization": f"Bearer {self.supabase_key}",
+        }
+        if content_type:
+            headers["Content-Type"] = content_type
+        if method == "DELETE":
+            headers["Content-Type"] = "application/json"
+            body = json.dumps({"prefixes": [object_path]}).encode("utf-8")
+
+        request = Request(endpoint, data=body, headers=headers, method=method)
+        try:
+            with urlopen(request, timeout=30) as response:
+                response.read()
+        except HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"Supabase Storage {method} failed with HTTP {error.code}: {detail}"
+            ) from error
+
+    def _upload_image(self, image_path, object_path):
+        with open(image_path, "rb") as image_file:
+            image_bytes = image_file.read()
+        self._storage_request(
+            "POST", object_path, body=image_bytes, content_type="image/jpeg"
+        )
 
     def _init_db(self):
         conn = sqlite3.connect(DB_PATH)
@@ -73,14 +119,9 @@ class FlywheelManager:
         pii_found = self._redact_pii(image_path)
         record_id = str(uuid.uuid4())
         date_str = datetime.now().strftime("%Y-%m-%d")
-        partition_dir = os.path.join(DRIVE_ROOT, date_str)
-        os.makedirs(partition_dir, exist_ok=True)
-        
-        dest_image_path = os.path.join(partition_dir, f"{record_id}.jpg")
-        shutil.copy2(image_path, dest_image_path)
-        os.system("sync")
-        time.sleep(1) # Shortened sleep for better UX
-        
+        object_path = f"{date_str}/{record_id}.jpg"
+        self._upload_image(image_path, object_path)
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         try:
@@ -88,31 +129,41 @@ class FlywheelManager:
                 INSERT INTO feedback_records 
                 (id, image_path, detected_class, confidence, risk_score, human_feedback, consent_granted, pii_redacted)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (record_id, dest_image_path, detected_class, confidence, risk_score, human_feedback, int(consent_granted), int(pii_found)))
+            """, (record_id, object_path, detected_class, confidence, risk_score, human_feedback, int(consent_granted), int(pii_found)))
             cursor.execute("INSERT INTO audit_log (record_id, action) VALUES (?, ?)", (record_id, "CREATED"))
             conn.commit()
             print(f"✅ [Flywheel] Saved {record_id} with privacy safeguards.")
             return record_id
-        except sqlite3.IntegrityError:
-            print(f"⚠️ [Flywheel] Image already exists. Skipped.")
-            return None
+        except Exception as error:
+            try:
+                self._storage_request("DELETE", object_path)
+            except Exception as cleanup_error:
+                raise RuntimeError(
+                    f"Flywheel metadata save failed and uploaded image cleanup failed: {cleanup_error}"
+                ) from error
+            raise
         finally:
             conn.close()
 
     def request_erasure(self, record_id):
         conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT image_path FROM feedback_records WHERE id = ?", (record_id,))
-        result = cursor.fetchone()
-        if result:
-            image_path = result[0]
-            if os.path.exists(image_path):
-                os.remove(image_path)
-            cursor.execute("UPDATE feedback_records SET image_path = 'DELETED', consent_granted = 0 WHERE id = ?", (record_id,))
-            cursor.execute("INSERT INTO audit_log (record_id, action) VALUES (?, ?)", (record_id, "ERASED"))
-            conn.commit()
-            print(f"✅ GDPR Erasure completed for {record_id}.")
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT image_path FROM feedback_records WHERE id = ?", (record_id,))
+            result = cursor.fetchone()
+            if result:
+                image_path = result[0]
+                if os.path.isabs(image_path):
+                    if os.path.exists(image_path):
+                        os.remove(image_path)
+                elif image_path != "DELETED":
+                    self._storage_request("DELETE", image_path)
+                cursor.execute("UPDATE feedback_records SET image_path = 'DELETED', consent_granted = 0 WHERE id = ?", (record_id,))
+                cursor.execute("INSERT INTO audit_log (record_id, action) VALUES (?, ?)", (record_id, "ERASED"))
+                conn.commit()
+                print(f"✅ GDPR Erasure completed for {record_id}.")
+        finally:
+            conn.close()
 
     def get_pending_training_data(self, limit=50):
         conn = sqlite3.connect(DB_PATH)

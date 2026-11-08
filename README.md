@@ -57,6 +57,10 @@ The mathematical proof that we can separate real defects (green) from garbage im
 
 This project strictly follows a **Safe Drive Persistence** and bit-identical reproducibility protocol.
 
+### Inspector feedback storage
+
+Inspector feedback images are uploaded to the Supabase Storage bucket `defect-images`; feedback metadata remains in the existing SQLite database. Configure `SUPABASE_URL` and `SUPABASE_KEY` in the server environment or Streamlit Secrets before using the feedback buttons. The key must have permission to upload to and delete objects from the bucket. Keep it server-side and never expose it in browser code or commit it to the repository. Without these settings, feedback saving fails visibly rather than falling back to local-only storage.
+
 ## 🗺️ Project Structure
 
 - `src/data/`: Dataset pipelines (NEU-DET, Severstal RLE decoding, GC10-DET, and the 15-class Unification script).

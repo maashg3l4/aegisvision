@@ -65,10 +65,15 @@ model, policy = load_models()
 kb = load_knowledge_base()
 
 try:
-    fm = FlywheelManager()
+    fm = FlywheelManager(
+        supabase_url=st.secrets.get('SUPABASE_URL', os.environ.get('SUPABASE_URL')),
+        supabase_key=st.secrets.get('SUPABASE_KEY', os.environ.get('SUPABASE_KEY')),
+    )
     flywheel_available = True
+    flywheel_error = None
 except Exception as e:
     flywheel_available = False
+    flywheel_error = str(e)
 
 # --- FEATURE EXTRACTION ---
 FEATURES = ['max_conf','mean_conf','std_conf','p90_conf','top1_gap','conf_entropy', 'n_preds','n_mid','n_high','mean_area','min_area','mean_ar','std_ar', 'small_ratio','unique_classes_pred']
@@ -236,31 +241,31 @@ if st.session_state.inspection_results is not None:
             if flywheel_available:
                 try:
                     fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'CORRECT')
-                    st.success('Feedback saved to Supabase. Thank you!')
+                    st.success('Feedback image uploaded to Supabase Storage and metadata saved. Thank you!')
                 except Exception as e:
-                    st.error(f'Supabase Error: {e}')
+                    st.error(f'Feedback save failed: {e}')
             else:
-                st.info('Feedback received! (Demo Mode)')
+                st.error(f'Feedback was not saved because flywheel storage is unavailable: {flywheel_error}')
     with col2:
         if st.button('❌ False Positive', use_container_width=True):
             if flywheel_available:
                 try:
                     fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'FALSE_POSITIVE')
-                    st.success('Feedback saved to Supabase. Thank you!')
+                    st.success('Feedback image uploaded to Supabase Storage and metadata saved. Thank you!')
                 except Exception as e:
-                    st.error(f'Supabase Error: {e}')
+                    st.error(f'Feedback save failed: {e}')
             else:
-                st.info('Feedback received! (Demo Mode)')
+                st.error(f'Feedback was not saved because flywheel storage is unavailable: {flywheel_error}')
     with col3:
         if st.button('⚠️ Missed Defect', use_container_width=True):
             if flywheel_available:
                 try:
                     fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'MISSED_DEFECT')
-                    st.success('Feedback saved to Supabase. Thank you!')
+                    st.success('Feedback image uploaded to Supabase Storage and metadata saved. Thank you!')
                 except Exception as e:
-                    st.error(f'Supabase Error: {e}')
+                    st.error(f'Feedback save failed: {e}')
             else:
-                st.info('Feedback received! (Demo Mode)')
+                st.error(f'Feedback was not saved because flywheel storage is unavailable: {flywheel_error}')
 
 # --- CHAT ---
 if st.session_state.inspection_results is not None:
