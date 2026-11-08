@@ -50,7 +50,7 @@ st.markdown('''
 # --- LOAD MODELS ---
 @st.cache_resource
 def load_models():
-    model_url = 'https://github.com/maashg3l4/aegisvision/releases/download/v3.0.0/best.pt'
+    model_url = 'https://github.com/maashg3l4/aegisvision/releases/download/v3.1.0/best.pt'
     policy_url = 'https://raw.githubusercontent.com/maashg3l4/aegisvision/main/src/policy/routing_policy_v3.json'
     if not os.path.exists('/tmp/best.pt'):
         urllib.request.urlretrieve(model_url, '/tmp/best.pt')
@@ -120,7 +120,7 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
     img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
     
     with st.spinner('Analyzing...'):
-        results = model(img_bgr, conf=0.001, verbose=False)[0]
+        results = model(img_bgr, conf=0.45, verbose=False)[0]
         
         is_ood = False
         energy_score = 0.0
@@ -199,12 +199,13 @@ if st.session_state.inspection_results is not None:
         st.image(res['annotated_rgb'], caption='Filtered Detections', use_column_width=True)
 
     st.markdown('---')
-    if res['is_ood']:
+    if res['decision'] == 'INSUFFICIENT_EVIDENCE':
         st.error(f'OUT-OF-DISTRIBUTION DETECTED (Energy: {res["energy_score"]:.2f}) - MANUAL REVIEW REQUIRED')
-    elif res['force_review']:
-        st.error(f'HUMAN REVIEW REQUIRED (Critical Class: {res["top_class_name"].upper()} detected) - Safety Override')
-    elif res['danger_score'] > 0.80:
-        st.error(f'HUMAN REVIEW REQUIRED (Risk Score: {res["danger_score"]:.4f})')
+    elif res['decision'] == 'REQUIRES_INSPECTION':
+        if res['force_review']:
+            st.error(f'HUMAN REVIEW REQUIRED (Critical Class: {res["top_class_name"].upper()} detected) - Safety Override')
+        else:
+            st.error(f'HUMAN REVIEW REQUIRED (Risk Score: {res["danger_score"]:.4f})')
     else:
         st.success(f'AUTO-ACCEPTED (Risk Score: {res["danger_score"]:.4f})')
 
@@ -307,6 +308,14 @@ if st.session_state.inspection_results is not None:
                             'uncertainty_assessment': {'risk_score': st.session_state.inspection_results['danger_score'], 'is_ood': st.session_state.inspection_results['is_ood'], 'safety_override_triggered': st.session_state.inspection_results['force_review']},
                             'routing_decision': st.session_state.inspection_results['decision']
                         }
+                        # TRUNCATE DETECTIONS TO PREVENT 413 ERROR
+                        if 'detections' in inspection_record and len(inspection_record['detections']) > 5:
+                            inspection_record['detections'] = sorted(
+                                inspection_record['detections'], 
+                                key=lambda x: x['confidence'], 
+                                reverse=True
+                            )[:5]
+                        
                         prompt = build_prompt(inspection_record, user_question)
                         chat_completion = client.chat.completions.create(
                             messages=[{'role': 'system', 'content': SYSTEM_PROMPT}, {'role': 'user', 'content': prompt}],
