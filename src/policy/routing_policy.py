@@ -26,6 +26,30 @@ OPERATING_POINTS = {
     "risk_target_0.20": {"review_budget": 0.04, "expected_residual_risk": 0.2000},
 }
 
+REVIEW_THRESHOLD = 0.5
+
+
+def filter_detection_indices(confidences, class_ids, class_names, critical_classes):
+    """Return indices above the display threshold for each detected class."""
+    keep = []
+    for index, (confidence, class_id) in enumerate(zip(confidences, class_ids)):
+        class_name = (
+            class_names[class_id] if 0 <= class_id < len(class_names) else "unknown"
+        )
+        threshold = 0.30 if class_name in critical_classes else 0.40
+        if float(confidence) >= threshold:
+            keep.append(index)
+    return keep
+
+
+def routing_decision(danger_score, force_review=False, is_ood=False, has_detection=True):
+    """Use one conservative threshold for the app, report, and API."""
+    if is_ood:
+        return "INSUFFICIENT_EVIDENCE"
+    if force_review or not has_detection or danger_score > REVIEW_THRESHOLD:
+        return "REQUIRES_INSPECTION"
+    return "AUTO_ASSESSED"
+
 
 def load_policy(path):
     """Load a frozen policy JSON."""

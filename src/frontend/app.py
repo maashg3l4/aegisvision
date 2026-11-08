@@ -12,8 +12,9 @@ from groq import Groq
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.report_assistant.generator import generate_report, load_knowledge_base
-from src.report_assistant.vlm_prompt import SYSTEM_PROMPT, build_prompt
+from src.report_assistant.vlm_prompt import SYSTEM_PROMPT, build_prompt, friendly_chat_error
 from src.flywheel.manager import FlywheelManager
+from src.policy.routing_policy import filter_detection_indices, routing_decision
 
 # --- GLOBAL CONSTANTS ---
 CLASS_NAMES = [
@@ -138,18 +139,12 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
             if energy_score > 0.0:
                 is_ood = True
 
-        vis_results = results
-        if len(results.boxes) > 0:
-            boxes_to_keep = []
-            for i, box in enumerate(results.boxes):
-                conf = float(box.conf[0])
-                cls_id = int(box.cls[0])
-                box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else 'unknown'
-                threshold = 0.30 if box_class_name in CRITICAL_CLASSES else 0.40
-                if conf >= threshold:
-                    boxes_to_keep.append(i)
-            if boxes_to_keep:
-                vis_results = results[boxes_to_keep]
+        detection_confidences = results.boxes.conf.cpu().numpy().tolist()
+        detection_classes = results.boxes.cls.cpu().numpy().astype(int).tolist()
+        boxes_to_keep = filter_detection_indices(
+            detection_confidences, detection_classes, CLASS_NAMES, CRITICAL_CLASSES
+        )
+        vis_results = results[boxes_to_keep]
 
         if is_ood:
             annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -166,18 +161,15 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
         z = float(((x - mu) / sd) @ w + b)
         danger_score = 1.0 / (1.0 + np.exp(-z))
 
-        top_class_id = int(results.boxes.cls[0].item()) if len(results.boxes) > 0 else -1
+        top_class_id = int(vis_results.boxes.cls[0].item()) if len(vis_results.boxes) > 0 else -1
         top_class_name = CLASS_NAMES[top_class_id] if top_class_id >= 0 and top_class_id < len(CLASS_NAMES) else 'unknown'
         force_review = top_class_name in CRITICAL_CLASSES
-
-        if is_ood:
-            decision = 'INSUFFICIENT_EVIDENCE'
-        elif force_review:
-            decision = 'REQUIRES_INSPECTION'
-        elif danger_score > 0.80:
-            decision = 'REQUIRES_INSPECTION'
-        else:
-            decision = 'AUTO_ASSESSED'
+        decision = routing_decision(
+            danger_score,
+            force_review=force_review,
+            is_ood=is_ood,
+            has_detection=len(vis_results.boxes) > 0,
+        )
 
         # Save to Session State
         st.session_state.inspection_results = {
@@ -187,8 +179,10 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
             'energy_score': energy_score,
             'danger_score': danger_score,
             'top_class_name': top_class_name,
+            'top_confidence': float(vis_results.boxes.conf[0].item()) if len(vis_results.boxes) > 0 else 0.0,
             'force_review': force_review,
             'decision': decision,
+            'visible_results': vis_results,
             'annotated_rgb': annotated_rgb
         }
         st.session_state.messages = []
@@ -208,14 +202,15 @@ if st.session_state.inspection_results is not None:
         st.error(f'OUT-OF-DISTRIBUTION DETECTED (Energy: {res["energy_score"]:.2f}) - MANUAL REVIEW REQUIRED')
     elif res['force_review']:
         st.error(f'HUMAN REVIEW REQUIRED (Critical Class: {res["top_class_name"].upper()} detected) - Safety Override')
-    elif res['danger_score'] > 0.80:
-        st.error(f'HUMAN REVIEW REQUIRED (Risk Score: {res["danger_score"]:.4f})')
+    elif res['decision'] == 'REQUIRES_INSPECTION':
+        reason = 'No detections met the display confidence threshold' if len(res['visible_results'].boxes) == 0 else 'Risk score exceeds the review threshold'
+        st.error(f'HUMAN REVIEW REQUIRED ({reason}; Risk Score: {res["danger_score"]:.4f})')
     else:
         st.success(f'AUTO-ACCEPTED (Risk Score: {res["danger_score"]:.4f})')
 
-    if not res['is_ood'] and len(res['results'].boxes) > 0:
+    if not res['is_ood'] and len(res['visible_results'].boxes) > 0:
         try:
-            report_text = generate_report(res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], kb, res['force_review'])
+            report_text = generate_report(res['top_class_name'], res['top_confidence'], res['danger_score'], kb, res['force_review'])
             lines = report_text.strip().split('\n')
             html = "<div class='report-card'><div class='report-title'>Aegis Report Assistant</div><div class='report-text'>"
             for line in lines:
@@ -233,39 +228,43 @@ if st.session_state.inspection_results is not None:
     st.markdown('---')
     st.subheader('Inspector Feedback')
     temp_img_path = '/tmp/temp_upload.jpg'
-    cv2.imwrite(temp_img_path, cv2.cvtColor(np.array(res['image']), cv2.COLOR_RGB2BGR))
-    
+    temp_img_ready = cv2.imwrite(
+        temp_img_path, cv2.cvtColor(np.array(res['image']), cv2.COLOR_RGB2BGR)
+    )
+    if not temp_img_ready:
+        st.error('Feedback was not saved: could not prepare the uploaded image.')
+
+    def save_feedback(feedback_type):
+        if not temp_img_ready:
+            return
+        if not flywheel_available:
+            st.error(f'Feedback was not saved because flywheel storage is unavailable: {flywheel_error}')
+            return
+        try:
+            object_path = fm.save_feedback(
+                temp_img_path,
+                res['top_class_name'],
+                res['top_confidence'],
+                res['danger_score'],
+                feedback_type,
+            )
+            st.success(
+                f'Image uploaded to Supabase Storage: defect-images/{object_path}. '
+                'Metadata was saved to this app’s SQLite database.'
+            )
+        except Exception as e:
+            st.error(f'Feedback save failed: {e}')
+
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button('✅ Correct', use_container_width=True):
-            if flywheel_available:
-                try:
-                    fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'CORRECT')
-                    st.success('Feedback image uploaded to Supabase Storage and metadata saved. Thank you!')
-                except Exception as e:
-                    st.error(f'Feedback save failed: {e}')
-            else:
-                st.error(f'Feedback was not saved because flywheel storage is unavailable: {flywheel_error}')
+            save_feedback('CORRECT')
     with col2:
         if st.button('❌ False Positive', use_container_width=True):
-            if flywheel_available:
-                try:
-                    fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'FALSE_POSITIVE')
-                    st.success('Feedback image uploaded to Supabase Storage and metadata saved. Thank you!')
-                except Exception as e:
-                    st.error(f'Feedback save failed: {e}')
-            else:
-                st.error(f'Feedback was not saved because flywheel storage is unavailable: {flywheel_error}')
+            save_feedback('FALSE_POSITIVE')
     with col3:
         if st.button('⚠️ Missed Defect', use_container_width=True):
-            if flywheel_available:
-                try:
-                    fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'MISSED_DEFECT')
-                    st.success('Feedback image uploaded to Supabase Storage and metadata saved. Thank you!')
-                except Exception as e:
-                    st.error(f'Feedback save failed: {e}')
-            else:
-                st.error(f'Feedback was not saved because flywheel storage is unavailable: {flywheel_error}')
+            save_feedback('MISSED_DEFECT')
 
 # --- CHAT ---
 if st.session_state.inspection_results is not None:
@@ -306,17 +305,30 @@ if st.session_state.inspection_results is not None:
                 with st.spinner('Aegis is thinking...'):
                     try:
                         client = Groq(api_key=groq_key)
+                        current_result = st.session_state.inspection_results
                         inspection_record = {
                             'inspection_id': 'live',
-                            'detections': [{'class_name': CLASS_NAMES[int(b.cls[0])], 'confidence': float(b.conf[0])} for b in st.session_state.inspection_results['results'].boxes],
-                            'uncertainty_assessment': {'risk_score': st.session_state.inspection_results['danger_score'], 'is_ood': st.session_state.inspection_results['is_ood'], 'safety_override_triggered': st.session_state.inspection_results['force_review']},
-                            'routing_decision': st.session_state.inspection_results['decision']
+                            'detections': [
+                                {
+                                    'class_name': CLASS_NAMES[int(box.cls[0])],
+                                    'confidence': float(box.conf[0]),
+                                }
+                                for box in current_result['visible_results'].boxes
+                            ],
+                            'total_detections': len(current_result['visible_results'].boxes),
+                            'uncertainty_assessment': {
+                                'risk_score': current_result['danger_score'],
+                                'is_ood': current_result['is_ood'],
+                                'safety_override_triggered': current_result['force_review'],
+                            },
+                            'routing_decision': current_result['decision'],
                         }
                         prompt = build_prompt(inspection_record, user_question)
                         chat_completion = client.chat.completions.create(
                             messages=[{'role': 'system', 'content': SYSTEM_PROMPT}, {'role': 'user', 'content': prompt}],
                             model='openai/gpt-oss-20b',
                             temperature=0.0,
+                            max_completion_tokens=512,
                             response_format={'type': 'json_object'}
                         )
                         raw_res = chat_completion.choices[0].message.content
@@ -336,4 +348,4 @@ if st.session_state.inspection_results is not None:
                         st.markdown(final_answer)
                         st.session_state.messages.append({'role': 'assistant', 'content': final_answer})
                     except Exception as e:
-                        st.error(f'Chat Error: {e}')
+                        st.error(friendly_chat_error(e))

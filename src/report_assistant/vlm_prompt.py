@@ -1,6 +1,9 @@
 """AegisVision - VLM Prompt Template."""
 import json
 
+MAX_CHAT_DETECTIONS = 12
+MAX_CHAT_QUESTION_CHARS = 500
+
 SYSTEM_PROMPT = """You are AegisVision, an industrial defect inspection assistant.
 Your job is to answer the user's question using ONLY the provided JSON Inspection Record.
 
@@ -26,8 +29,31 @@ Provide your response in the strict JSON format.
 """
 
 def build_prompt(inspection_record, question):
-    record_str = json.dumps(inspection_record, indent=2)
+    record = dict(inspection_record)
+    detections = record.get("detections", [])
+    record["detections"] = sorted(
+        detections, key=lambda detection: detection["confidence"], reverse=True
+    )[:MAX_CHAT_DETECTIONS]
+    record["detections_included"] = len(record["detections"])
+    record.setdefault("total_detections", len(detections))
+    question = str(question)[:MAX_CHAT_QUESTION_CHARS]
+    record_str = json.dumps(record, separators=(",", ":"))
     return USER_PROMPT_TEMPLATE.format(
         inspection_record_json=record_str,
         question=question
     )
+
+
+def friendly_chat_error(error):
+    """Convert provider size and rate-limit failures to actionable UI messages."""
+    status_code = getattr(error, "status_code", None)
+    if status_code == 413:
+        return (
+            "This inspection still has too much context for Aegis Chat. "
+            "The request was shortened; try again or ask about a specific defect."
+        )
+    if status_code == 429:
+        return "Aegis Chat is temporarily rate-limited. Please wait a moment and try again."
+    if status_code in (401, 403):
+        return "Aegis Chat could not authenticate. Check the configured Groq API key."
+    return f"Chat request failed: {error}"

@@ -2,6 +2,8 @@
 import json
 import os
 
+from src.policy.routing_policy import REVIEW_THRESHOLD
+
 def load_knowledge_base(path=None):
     if path is None:
         path = os.path.join(os.path.dirname(__file__), "knowledge_base.json")
@@ -24,9 +26,9 @@ def generate_report(defect_class, confidence, danger_score, kb, force_review=Fal
     elif danger_score > 0.8:
         severity = "CRITICAL"
         routing = "HUMAN REVIEW REQUIRED"
-    elif danger_score > 0.5:
+    elif danger_score > REVIEW_THRESHOLD:
         severity = "MODERATE"
-        routing = "HUMAN REVIEW RECOMMENDED"
+        routing = "HUMAN REVIEW REQUIRED"
     else:
         severity = "LOW"
         routing = "AUTO-ACCEPTED"

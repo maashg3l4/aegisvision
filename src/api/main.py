@@ -12,6 +12,7 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from api.live_features import extract_live_features, FEATURES
+from src.policy.routing_policy import routing_decision
 
 app = FastAPI(title="AegisVision API", version="1.0.0")
 
@@ -54,7 +55,13 @@ async def predict(file: UploadFile = File(...)):
     
     # 5. Routing Decision (Budget = 20% -> Threshold = 0.80 danger score)
     # If danger > 0.80, it goes to the top 20% riskiest images
-    decision = "HUMAN_REVIEW" if danger_score > 0.80 else "AUTO_ACCEPT"
+    decision = (
+        "HUMAN_REVIEW"
+        if routing_decision(
+            danger_score, has_detection=len(results.boxes) > 0
+        ) == "REQUIRES_INSPECTION"
+        else "AUTO_ACCEPT"
+    )
     
     # 6. Format boxes
     boxes_list = []

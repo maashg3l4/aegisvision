@@ -59,7 +59,7 @@ This project strictly follows a **Safe Drive Persistence** and bit-identical rep
 
 ### Inspector feedback storage
 
-Inspector feedback images are uploaded to the Supabase Storage bucket `defect-images`; feedback metadata remains in the existing SQLite database. Configure `SUPABASE_URL` and `SUPABASE_KEY` in the server environment or Streamlit Secrets before using the feedback buttons. The key must have permission to upload to and delete objects from the bucket. Keep it server-side and never expose it in browser code or commit it to the repository. Without these settings, feedback saving fails visibly rather than falling back to local-only storage.
+Inspector feedback images are uploaded to the Supabase Storage bucket `defect-images`; feedback metadata remains in the app's SQLite database (ephemeral `/tmp` storage outside Colab, not a Supabase table). Configure `SUPABASE_URL` and `SUPABASE_KEY` in the server environment or Streamlit Secrets before using the feedback buttons. The key must have permission to upload to and delete objects from the bucket. Keep it server-side and never expose it in browser code or commit it to the repository. Without these settings, feedback saving fails visibly rather than falling back to local-only storage. After a successful save, the UI shows the exact bucket object path so it can be located in Supabase Storage.
 
 ## 🗺️ Project Structure
 

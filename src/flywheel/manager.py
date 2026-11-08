@@ -103,7 +103,8 @@ class FlywheelManager:
 
     def _redact_pii(self, image_path):
         img = cv2.imread(image_path)
-        if img is None: return False
+        if img is None:
+            raise ValueError(f"Unable to read feedback image for privacy processing: {image_path}")
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
         if len(faces) > 0:
@@ -122,9 +123,10 @@ class FlywheelManager:
         object_path = f"{date_str}/{record_id}.jpg"
         self._upload_image(image_path, object_path)
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO feedback_records 
                 (id, image_path, detected_class, confidence, risk_score, human_feedback, consent_granted, pii_redacted)
@@ -132,8 +134,7 @@ class FlywheelManager:
             """, (record_id, object_path, detected_class, confidence, risk_score, human_feedback, int(consent_granted), int(pii_found)))
             cursor.execute("INSERT INTO audit_log (record_id, action) VALUES (?, ?)", (record_id, "CREATED"))
             conn.commit()
-            print(f"✅ [Flywheel] Saved {record_id} with privacy safeguards.")
-            return record_id
+            return object_path
         except Exception as error:
             try:
                 self._storage_request("DELETE", object_path)
@@ -143,7 +144,8 @@ class FlywheelManager:
                 ) from error
             raise
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
 
     def request_erasure(self, record_id):
         conn = sqlite3.connect(DB_PATH)

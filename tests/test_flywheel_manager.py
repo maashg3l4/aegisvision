@@ -51,20 +51,23 @@ class FlywheelManagerTests(unittest.TestCase):
         response.__enter__.return_value = response
         mocked_urlopen.return_value = response
 
-        record_id = self.manager.save_feedback(
+        object_path = self.manager.save_feedback(
             self.source_path, "scratches", 0.9, 0.7, "CORRECT"
         )
 
         request = mocked_urlopen.call_args.args[0]
         self.assertEqual(request.get_method(), "POST")
+        endpoint_path = request.full_url.split("/storage/v1/object/", 1)[1]
+        self.assertEqual(endpoint_path, f"defect-images/{object_path}")
         self.assertEqual(
-            request.full_url.split("/storage/v1/object/", 1)[1].split("/", 1)[0],
-            "defect-images",
+            request.get_header("Authorization"),
+            "Bearer test-key",
         )
         self.assertEqual(request.data, b"redacted demo image bytes")
         self.assertEqual(request.get_header("Content-type"), "image/jpeg")
         self.assertEqual(mocked_urlopen.call_args.kwargs["timeout"], 30)
 
+        record_id = os.path.basename(object_path).removesuffix(".jpg")
         connection = sqlite3.connect(self.db_path)
         try:
             stored_path = connection.execute(
@@ -72,7 +75,7 @@ class FlywheelManagerTests(unittest.TestCase):
             ).fetchone()[0]
         finally:
             connection.close()
-        self.assertTrue(stored_path.endswith(f"/{record_id}.jpg"))
+        self.assertEqual(stored_path, object_path)
         self.assertTrue(stored_path.startswith("20"))
 
     @mock.patch.dict(
@@ -94,6 +97,35 @@ class FlywheelManagerTests(unittest.TestCase):
             connection.close()
         self.assertEqual(count, 0)
         mocked_urlopen.assert_called_once()
+
+    @mock.patch("src.flywheel.manager.urlopen")
+    def test_redacted_image_bytes_are_uploaded_and_marked_in_metadata(self, mocked_urlopen):
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        mocked_urlopen.return_value = response
+
+        def redact_image(path):
+            with open(path, "wb") as image_file:
+                image_file.write(b"redacted image")
+            return True
+
+        with mock.patch.object(
+            self.manager, "_redact_pii", side_effect=redact_image
+        ):
+            object_path = self.manager.save_feedback(
+                self.source_path, "scratches", 0.9, 0.7, "CORRECT"
+            )
+
+        self.assertEqual(mocked_urlopen.call_args.args[0].data, b"redacted image")
+        connection = sqlite3.connect(self.db_path)
+        try:
+            pii_redacted = connection.execute(
+                "SELECT pii_redacted FROM feedback_records WHERE image_path = ?",
+                (object_path,),
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(pii_redacted, 1)
 
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_missing_supabase_configuration_fails_before_upload(self):
