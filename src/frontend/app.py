@@ -130,8 +130,10 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
                 box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else 'unknown'
-                # Two-tier threshold: 0.35 for critical, 0.45 for normal
-                threshold = 0.35 if box_class_name in CRITICAL_CLASSES else 0.45
+                
+                # NEW: Lower threshold to 0.30 for everything so the user can see the faint defects
+                threshold = 0.30 
+                
                 if conf >= threshold:
                     boxes_to_keep.append(i)
             if boxes_to_keep:
@@ -227,17 +229,20 @@ if st.session_state.inspection_results is not None:
     with col1:
         if st.button('✅ Correct', use_container_width=True):
             if flywheel_available:
-                fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'CORRECT')
+                conf_val = float(res['results'].boxes.conf[0].item()) if len(res['results'].boxes) > 0 else 0.0
+                fm.save_feedback(temp_img_path, res['top_class_name'], conf_val, res['danger_score'], 'CORRECT')
                 st.success('Feedback saved. Thank you!')
     with col2:
         if st.button('❌ False Positive', use_container_width=True):
             if flywheel_available:
-                fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'FALSE_POSITIVE')
+                conf_val = float(res['results'].boxes.conf[0].item()) if len(res['results'].boxes) > 0 else 0.0
+                fm.save_feedback(temp_img_path, res['top_class_name'], conf_val, res['danger_score'], 'FALSE_POSITIVE')
                 st.success('Feedback saved. Thank you!')
     with col3:
         if st.button('⚠️ Missed Defect', use_container_width=True):
             if flywheel_available:
-                fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], 'MISSED_DEFECT')
+                conf_val = float(res['results'].boxes.conf[0].item()) if len(res['results'].boxes) > 0 else 0.0
+                fm.save_feedback(temp_img_path, res['top_class_name'], conf_val, res['danger_score'], 'MISSED_DEFECT')
                 st.success('Feedback saved. Thank you!')
 
 # --- CHAT ---
