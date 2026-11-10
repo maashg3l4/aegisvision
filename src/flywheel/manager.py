@@ -8,6 +8,8 @@ import time
 # Standard, safe initialization
 url: str = st.secrets["SUPABASE_URL"]
 key: str = st.secrets["SUPABASE_KEY"]
+print(f"🔍 DIAGNOSTIC: Attempting to connect to Supabase URL: {url}")
+print(f"🔍 DIAGNOSTIC: Key starts with: {key[:10]}...")
 supabase: Client = create_client(url, key)
 
 BUCKET_NAME = "aegis-flywheel-images"
