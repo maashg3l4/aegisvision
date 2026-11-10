@@ -7,3 +7,4 @@ scikit-learn==1.4.2
 jsonschema
 groq
 supabase
+supadns
