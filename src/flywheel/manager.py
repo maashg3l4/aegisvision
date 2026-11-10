@@ -1,16 +1,14 @@
 import os
 import uuid
 import streamlit as st
-from supabase import create_client, Client
+from supadns import create_smart_client
 import cv2
 import time
 
-# Standard, safe initialization
 url: str = st.secrets["SUPABASE_URL"]
 key: str = st.secrets["SUPABASE_KEY"]
-print(f"🔍 DIAGNOSTIC: Attempting to connect to Supabase URL: {url}")
-print(f"🔍 DIAGNOSTIC: Key starts with: {key[:10]}...")
-supabase: Client = create_client(url, key)
+
+supabase = create_smart_client(url, key)
 
 BUCKET_NAME = "aegis-flywheel-images"
 
@@ -36,7 +34,6 @@ class FlywheelManager:
         record_id = str(uuid.uuid4())
         storage_path = f"feedback/{record_id}.jpg"
 
-        # Robust Upload with Retry Logic for Streamlit Cloud
         max_retries = 3
         upload_success = False
         last_error = None
@@ -50,17 +47,15 @@ class FlywheelManager:
                         file_options={"content-type": "image/jpeg"}
                     )
                 upload_success = True
-                break  # Exit loop if successful
+                break
             except Exception as e:
                 last_error = e
                 print(f"⚠️ Upload attempt {attempt + 1} failed. Retrying in 2 seconds...")
-                time.sleep(2) # Wait before retrying
+                time.sleep(2)
 
         if not upload_success:
-            # If all retries fail, raise the error to the UI
-            raise Exception(f"Failed to upload image to Supabase after 3 attempts. Last error: {last_error}")
+            raise Exception(f"Failed to upload image after 3 attempts. Error: {last_error}")
 
-        # Insert metadata into Database
         supabase.table('feedback_records').insert({
             "id": record_id,
             "image_path": storage_path,
@@ -72,7 +67,6 @@ class FlywheelManager:
             "pii_redacted": pii_found
         }).execute()
 
-        # Log the action
         supabase.table('audit_log').insert({
             "record_id": record_id,
             "action": "CREATED"
