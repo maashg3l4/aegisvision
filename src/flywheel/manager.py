@@ -1,59 +1,19 @@
-"""AegisVision - Privacy-First Data Flywheel Manager.
-Handles image storage, PII redaction, metadata logging, and GDPR erasure requests.
-"""
 import os
-import sqlite3
 import uuid
-import shutil
-import time
+import streamlit as st
+from supabase import create_client, Client
 import cv2
-import numpy as np
-from datetime import datetime
 
-import sys
-# Detect if we are running in Streamlit Cloud or Colab
-if 'google.colab' in sys.modules:
-    DRIVE_ROOT = "/content/drive/MyDrive/AegisVision/Data_Flywheel"
-    DB_PATH = "/content/drive/MyDrive/AegisVision/data/flywheel/aegis_flywheel.db"
-else:
-    # Streamlit Cloud fallback (ephemeral storage)
-    DRIVE_ROOT = "/tmp/AegisVision_Data_Flywheel"
-    DB_PATH = "/tmp/aegis_flywheel.db"
+# Read directly from Streamlit Secrets
+url: str = st.secrets["SUPABASE_URL"]
+key: str = st.secrets["SUPABASE_KEY"]
+supabase: Client = create_client(url, key)
+
+BUCKET_NAME = "aegis-flywheel-images"
 
 class FlywheelManager:
     def __init__(self):
-        os.makedirs(DRIVE_ROOT, exist_ok=True)
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        self._init_db()
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-
-    def _init_db(self):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS feedback_records (
-                id TEXT PRIMARY KEY,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                image_path TEXT UNIQUE,
-                detected_class TEXT,
-                confidence REAL,
-                risk_score REAL,
-                human_feedback TEXT,
-                is_processed_for_training INTEGER DEFAULT 0,
-                consent_granted INTEGER DEFAULT 1,
-                pii_redacted INTEGER DEFAULT 0
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS audit_log (
-                log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                record_id TEXT,
-                action TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
-        conn.close()
 
     def _redact_pii(self, image_path):
         img = cv2.imread(image_path)
@@ -65,59 +25,54 @@ class FlywheelManager:
                 roi = img[y:y+h, x:x+w]
                 img[y:y+h, x:x+w] = cv2.GaussianBlur(roi, (99, 99), 30)
             cv2.imwrite(image_path, img)
-            print(f"🔒 [Privacy] PII redacted in {os.path.basename(image_path)}")
             return True
         return False
 
     def save_feedback(self, image_path, detected_class, confidence, risk_score, human_feedback, consent_granted=True):
         pii_found = self._redact_pii(image_path)
         record_id = str(uuid.uuid4())
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        partition_dir = os.path.join(DRIVE_ROOT, date_str)
-        os.makedirs(partition_dir, exist_ok=True)
-        
-        dest_image_path = os.path.join(partition_dir, f"{record_id}.jpg")
-        shutil.copy2(image_path, dest_image_path)
-        os.system("sync")
-        time.sleep(1) # Shortened sleep for better UX
-        
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        try:
-            cursor.execute("""
-                INSERT INTO feedback_records 
-                (id, image_path, detected_class, confidence, risk_score, human_feedback, consent_granted, pii_redacted)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (record_id, dest_image_path, detected_class, confidence, risk_score, human_feedback, int(consent_granted), int(pii_found)))
-            cursor.execute("INSERT INTO audit_log (record_id, action) VALUES (?, ?)", (record_id, "CREATED"))
-            conn.commit()
-            print(f"✅ [Flywheel] Saved {record_id} with privacy safeguards.")
-            return record_id
-        except sqlite3.IntegrityError:
-            print(f"⚠️ [Flywheel] Image already exists. Skipped.")
-            return None
-        finally:
-            conn.close()
+        storage_path = f"feedback/{record_id}.jpg"
+
+        # Upload to Supabase Storage
+        with open(image_path, 'rb') as f:
+            supabase.storage.from_(BUCKET_NAME).upload(
+                path=storage_path,
+                file=f,
+                file_options={"content-type": "image/jpeg"}
+            )
+
+        # Insert metadata into Database
+        supabase.table('feedback_records').insert({
+            "id": record_id,
+            "image_path": storage_path,
+            "detected_class": detected_class,
+            "confidence": confidence,
+            "risk_score": risk_score,
+            "human_feedback": human_feedback,
+            "consent_granted": consent_granted,
+            "pii_redacted": pii_found
+        }).execute()
+
+        # Log the action
+        supabase.table('audit_log').insert({
+            "record_id": record_id,
+            "action": "CREATED"
+        }).execute()
+
+        print(f"✅ [Flywheel] Saved {record_id} to Supabase.")
+        return record_id
 
     def request_erasure(self, record_id):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT image_path FROM feedback_records WHERE id = ?", (record_id,))
-        result = cursor.fetchone()
-        if result:
-            image_path = result[0]
-            if os.path.exists(image_path):
-                os.remove(image_path)
-            cursor.execute("UPDATE feedback_records SET image_path = 'DELETED', consent_granted = 0 WHERE id = ?", (record_id,))
-            cursor.execute("INSERT INTO audit_log (record_id, action) VALUES (?, ?)", (record_id, "ERASED"))
-            conn.commit()
+        res = supabase.table('feedback_records').select('image_path').eq('id', record_id).execute()
+        if res.data:
+            image_path = res.data[0]['image_path']
+            supabase.storage.from_(BUCKET_NAME).remove([image_path])
+            supabase.table('feedback_records').update({
+                'image_path': 'DELETED',
+                'consent_granted': False
+            }).eq('id', record_id).execute()
+            supabase.table('audit_log').insert({
+                "record_id": record_id,
+                "action": "ERASED"
+            }).execute()
             print(f"✅ GDPR Erasure completed for {record_id}.")
-        conn.close()
-
-    def get_pending_training_data(self, limit=50):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, image_path, detected_class, human_feedback FROM feedback_records WHERE is_processed_for_training = 0 AND consent_granted = 1 AND image_path != 'DELETED' LIMIT ?", (limit,))
-        records = cursor.fetchall()
-        conn.close()
-        return records
