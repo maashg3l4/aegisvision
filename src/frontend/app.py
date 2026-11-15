@@ -41,7 +41,7 @@ st.markdown('''
 # --- LOAD MODELS ---
 @st.cache_resource
 def load_models():
-    model_url = 'https://github.com/maashg3l4/aegisvision/releases/download/v4.0.0/best.pt'
+    model_url = 'https://github.com/maashg3l4/aegisvision/releases/download/v4.1.0/best.pt'
     policy_url = 'https://raw.githubusercontent.com/maashg3l4/aegisvision/main/src/policy/routing_policy_v3.json'
     if not os.path.exists('/tmp/best.pt'):
         urllib.request.urlretrieve(model_url, '/tmp/best.pt')
