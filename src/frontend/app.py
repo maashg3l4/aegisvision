@@ -89,7 +89,7 @@ def route_inspection(raw_results, policy, is_ood, energy_score):
     if len(raw_results.boxes) == 0:
         return DECISION_HUMAN_REVIEW, "No detections found.", 0.0, "none", False
     if is_ood:
-        return DECISION_REJECT, f"OOD (Energy: {energy_score:.2f})", 1.0, "unknown", True
+        return DECISION_REJECT, f"OUT-OF-DOMAIN IMAGE (Color/Texture mismatch). Energy: {energy_score:.2f}", 1.0, "unknown", True
         
     feats = extract_features(raw_results)
     x = np.array([feats[f] for f in FEATURES])
@@ -102,7 +102,7 @@ def route_inspection(raw_results, policy, is_ood, energy_score):
     force_review = top_cls in CRITICAL_CLASSES
     
     if force_review: return DECISION_HUMAN_REVIEW, f"Critical class '{top_cls}' detected.", danger_score, top_cls, True
-    if max_conf < 0.35: return DECISION_HUMAN_REVIEW, f"Max confidence {max_conf:.2f} below 0.35 threshold.", danger_score, top_cls, False
+    if max_conf < 0.60: return DECISION_HUMAN_REVIEW, f"Max confidence {max_conf:.2f} is below safety threshold (0.60).", danger_score, top_cls, False
     if danger_score > 0.80: return DECISION_HUMAN_REVIEW, f"Risk score {danger_score:.2f} exceeds threshold.", danger_score, top_cls, False
     
     return DECISION_ACCEPT, f"Auto-accepted (Risk: {danger_score:.2f}).", danger_score, top_cls, False
@@ -127,22 +127,33 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
     img_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
     
     with st.spinner('Analyzing...'):
+        # 1. HARD OOD COLOR CHECK (Teal image will fail this)
+        hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+        mean_saturation = np.mean(hsv[:, :, 1])
+        is_color_ood = mean_saturation > 30 # Grayscale steel has low saturation. Teal is high.
+        
+        # 2. RAW INFERENCE with strict NMS
         raw_results = model(img_bgr, conf=0.001, agnostic_nms=True, verbose=False)[0]
         
-        is_ood, energy_score = False, 0.0
+        # 3. ENERGY OOD SHIELD
+        is_energy_ood, energy_score = False, 0.0
         if len(raw_results.boxes) > 0:
             probs = np.clip(raw_results.boxes.conf.cpu().numpy(), 1e-7, 1 - 1e-7)
             energies = -np.log(np.sum(np.exp(np.log(probs / (1 - probs)))))
             energy_score = float(np.max(energies))
-            if energy_score > 0.0: is_ood = True
+            if energy_score > 0.0: is_energy_ood = True
+        
+        # Combine OOD flags
+        is_ood = is_color_ood or is_energy_ood
                 
+        # 4. ROUTING
         decision, reason, danger_score, top_cls, force_review = route_inspection(raw_results, policy, is_ood, energy_score)
         
-        # VISUAL FILTER (Strict threshold for drawing)
-        vis_results = raw_results
-        if len(raw_results.boxes) > 0:
-            mask = raw_results.boxes.conf > 0.25
-            vis_results = raw_results[mask]
+        # 5. FORCE VISUAL FILTER (Re-run inference just for drawing with hard 0.25 threshold)
+        if is_ood:
+            vis_results = []
+        else:
+            vis_results = model(img_bgr, conf=0.25, agnostic_nms=True, verbose=False)[0]
             
         if is_ood or len(vis_results.boxes) == 0:
             annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -161,7 +172,7 @@ if st.session_state.inspection_results is not None:
     res = st.session_state.inspection_results
     col1, col2 = st.columns(2)
     with col1: st.image(res['image'], caption='Original Upload', use_column_width=True)
-    with col2: st.image(res['annotated_rgb'], caption='Filtered Detections', use_column_width=True)
+    with col2: st.image(res['annotated_rgb'], caption='Filtered Detections (Strict Threshold)', use_column_width=True)
 
     st.markdown('---')
     if res['decision'] == DECISION_REJECT: st.error(f"REJECTED: {res['reason']}")
@@ -215,8 +226,12 @@ if st.session_state.inspection_results is not None:
         suggested_q = None
         with col1:
             if st.button('What defect was found?', use_container_width=True): suggested_q = 'What defect was found?'
-        with col2:
-            if st.button('Why is this flagged?', use_container_width=True): suggested_q = 'Why is this image sent for human review?'
+        
+        # DYNAMIC UI: Only show 'Why is this flagged' if it's actually flagged
+        if st.session_state.inspection_results['decision'] != DECISION_ACCEPT:
+            with col2:
+                if st.button('Why is this flagged?', use_container_width=True): suggested_q = 'Why is this image sent for human review?'
+        
         with col3:
             if st.button('What is the risk score?', use_container_width=True): suggested_q = 'What is the risk score of this inspection?'
                 
