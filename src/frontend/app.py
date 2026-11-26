@@ -160,10 +160,18 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
         else:
             annotated_rgb = cv2.cvtColor(vis_results.plot(conf=True, line_width=1), cv2.COLOR_BGR2RGB)
 
+        # CRITICAL FIX: Cast all NumPy types to native Python types for JSON serialization
         st.session_state.inspection_results = {
-            'image': image, 'results': raw_results, 'is_ood': is_ood, 'energy_score': energy_score,
-            'decision': decision, 'reason': reason, 'danger_score': danger_score,
-            'top_class_name': top_cls, 'force_review': force_review, 'annotated_rgb': annotated_rgb
+            'image': image, 
+            'results': raw_results, 
+            'is_ood': bool(is_ood), 
+            'energy_score': float(energy_score),
+            'decision': str(decision), 
+            'reason': str(reason), 
+            'danger_score': float(danger_score),
+            'top_class_name': str(top_cls), 
+            'force_review': bool(force_review), 
+            'annotated_rgb': annotated_rgb
         }
         st.session_state.messages = []
 
