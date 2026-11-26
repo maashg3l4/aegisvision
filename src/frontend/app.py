@@ -24,31 +24,42 @@ CLASS_NAMES = [
 CRITICAL_CLASSES = ['crazing', 'rolled-in_scale', 'scratches', 'crease']
 
 # --- CUSTOM CSS ---
-st.markdown('''
+st.markdown("""
 <style>
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .stApp { background-color: #0e1117; }
     h1 { font-family: 'Inter', sans-serif; font-weight: 700; letter-spacing: -1px; }
-    .report-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 24px; margin-top: 20px; animation: fadeIn 0.6s ease-out; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); }
+    .report-card {
+        background: rgba(30, 41, 59, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 24px;
+        margin-top: 20px;
+        animation: fadeIn 0.6s ease-out;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
     .report-title { color: #60a5fa; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
     .report-text { color: #e2e8f0; font-size: 15px; line-height: 1.6; }
     .action-item { color: #f87171; font-weight: 600; margin-top: 10px; display: block; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
-''', unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # --- LOAD MODELS ---
 @st.cache_resource
 def load_models():
-    model_url = 'https://github.com/maashg3l4/aegisvision/releases/download/v4.2.1/best.pt'
-    policy_url = 'https://raw.githubusercontent.com/maashg3l4/aegisvision/main/src/policy/routing_policy_v3.json'
-    if not os.path.exists('/tmp/best.pt'):
-        urllib.request.urlretrieve(model_url, '/tmp/best.pt')
-    if not os.path.exists('/tmp/policy.json'):
-        urllib.request.urlretrieve(policy_url, '/tmp/policy.json')
-    model = YOLO('/tmp/best.pt')
-    with open('/tmp/policy.json') as f:
+    model_url = "https://github.com/maashg3l4/aegisvision/releases/download/v4.2.1/best.pt"
+    policy_url = "https://raw.githubusercontent.com/maashg3l4/aegisvision/main/src/policy/routing_policy_v3.json"
+    
+    if not os.path.exists("/tmp/best.pt"):
+        urllib.request.urlretrieve(model_url, "/tmp/best.pt")
+    if not os.path.exists("/tmp/policy.json"):
+        urllib.request.urlretrieve(policy_url, "/tmp/policy.json")
+        
+    model = YOLO("/tmp/best.pt")
+    with open("/tmp/policy.json") as f:
         policy = json.load(f)
     return model, policy
 
@@ -61,7 +72,9 @@ except Exception:
     flywheel_available = False
 
 # --- FEATURE EXTRACTION ---
-FEATURES = ['max_conf','mean_conf','std_conf','p90_conf','top1_gap','conf_entropy', 'n_preds','n_mid','n_high','mean_area','min_area','mean_ar','std_ar', 'small_ratio','unique_classes_pred']
+FEATURES = ['max_conf','mean_conf','std_conf','p90_conf','top1_gap','conf_entropy',
+            'n_preds','n_mid','n_high','mean_area','min_area','mean_ar','std_ar',
+            'small_ratio','unique_classes_pred']
 
 def extract_features(results):
     boxes = results.boxes
@@ -109,68 +122,72 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
     img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
     
     with st.spinner('Analyzing...'):
-        # FIX 1: Set base confidence to 0.45 to stop Box Soup
-        results = model(img_bgr, conf=0.45, verbose=False)[0]
+        # 1. RAW INFERENCE
+        raw_results = model(img_bgr, conf=0.001, verbose=False)[0]
         
-        is_ood = False
-        energy_score = 0.0
-        if len(results.boxes) > 0:
-            probs = results.boxes.conf.cpu().numpy()
+        # 2. FEATURE EXTRACTION & RISK SCORE
+        if len(raw_results.boxes) == 0:
+            danger_score = 0.0
+            top_class_name = "none"
+            is_ood = False
+            energy_score = 0.0
+            force_review = False
+            decision = 'AUTO_ASSESSED'
+        else:
+            feats_dict = extract_features(raw_results)
+            x = np.array([feats_dict[f] for f in FEATURES])
+            mu = np.array(policy['scaler']['mean'])[:15]
+            sd = np.array(policy['scaler']['scale'])[:15]
+            w = np.array(policy['lr_model']['coefficients'])[:15]
+            b = policy['lr_model']['intercept']
+            z = float(((x - mu) / sd) @ w + b)
+            danger_score = 1.0 / (1.0 + np.exp(-z))
+            
+            probs = raw_results.boxes.conf.cpu().numpy()
             probs = np.clip(probs, 1e-7, 1 - 1e-7)
             logits = np.log(probs / (1 - probs))
             energies = -np.log(np.sum(np.exp(logits)))
             energy_score = float(np.max(energies))
-            if energy_score > 0.0:
-                is_ood = True
+            is_ood = energy_score > 0.0
+            
+            top_class_id = int(raw_results.boxes.cls[0].item())
+            top_class_name = CLASS_NAMES[top_class_id] if top_class_id < len(CLASS_NAMES) else 'unknown'
+            force_review = top_class_name in CRITICAL_CLASSES
+            
+            if is_ood:
+                decision = 'INSUFFICIENT_EVIDENCE'
+            elif force_review:
+                decision = 'REQUIRES_INSPECTION'
+            elif danger_score > 0.80:
+                decision = 'REQUIRES_INSPECTION'
+            else:
+                decision = 'AUTO_ASSESSED'
 
-        vis_results = results
-        if len(results.boxes) > 0:
+        # 3. VISUAL FILTER
+        vis_results = raw_results
+        if len(raw_results.boxes) > 0:
             boxes_to_keep = []
-            for i, box in enumerate(results.boxes):
+            for i, box in enumerate(raw_results.boxes):
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
                 box_class_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else 'unknown'
-                
-                # NEW: Lower threshold to 0.30 for everything so the user can see the faint defects
-                threshold = 0.30 
-                
+                threshold = 0.35 if box_class_name in CRITICAL_CLASSES else 0.45
                 if conf >= threshold:
                     boxes_to_keep.append(i)
             if boxes_to_keep:
-                vis_results = results[boxes_to_keep]
+                vis_results = raw_results[boxes_to_keep]
 
-        if is_ood:
+        # 4. DRAWING
+        if is_ood or len(vis_results.boxes) == 0:
             annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         else:
             annotated_bgr = vis_results.plot(conf=True, line_width=1)
             annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
 
-        feats_dict = extract_features(results)
-        x = np.array([feats_dict[f] for f in FEATURES])
-        mu = np.array(policy['scaler']['mean'])[:15]
-        sd = np.array(policy['scaler']['scale'])[:15]
-        w = np.array(policy['lr_model']['coefficients'])[:15]
-        b = policy['lr_model']['intercept']
-        z = float(((x - mu) / sd) @ w + b)
-        danger_score = 1.0 / (1.0 + np.exp(-z))
-
-        top_class_id = int(results.boxes.cls[0].item()) if len(results.boxes) > 0 else -1
-        top_class_name = CLASS_NAMES[top_class_id] if top_class_id >= 0 and top_class_id < len(CLASS_NAMES) else 'unknown'
-        force_review = top_class_name in CRITICAL_CLASSES
-
-        # FIX 2: Centralized Routing Decision (Single Source of Truth)
-        if is_ood:
-            decision = 'INSUFFICIENT_EVIDENCE'
-        elif force_review:
-            decision = 'REQUIRES_INSPECTION'
-        elif danger_score > 0.80:
-            decision = 'REQUIRES_INSPECTION'
-        else:
-            decision = 'AUTO_ASSESSED'
-
+        # 5. SAVE TO STATE
         st.session_state.inspection_results = {
             'image': image,
-            'results': results,
+            'results': raw_results,
             'is_ood': is_ood,
             'energy_score': energy_score,
             'danger_score': danger_score,
@@ -181,7 +198,7 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
         }
         st.session_state.messages = []
 
-# --- RENDER RESULTS ---
+# --- RENDER RESULTS (FROM STATE) ---
 if st.session_state.inspection_results is not None:
     res = st.session_state.inspection_results
     
@@ -192,7 +209,6 @@ if st.session_state.inspection_results is not None:
         st.image(res['annotated_rgb'], caption='Filtered Detections', use_column_width=True)
 
     st.markdown('---')
-    # FIX 3: Consistent Banner UI
     if res['decision'] == 'INSUFFICIENT_EVIDENCE':
         st.error(f'OUT-OF-DISTRIBUTION DETECTED (Energy: {res["energy_score"]:.2f}) - MANUAL REVIEW REQUIRED')
     elif res['decision'] == 'REQUIRES_INSPECTION':
@@ -229,23 +245,35 @@ if st.session_state.inspection_results is not None:
     with col1:
         if st.button('✅ Correct', use_container_width=True):
             if flywheel_available:
-                conf_val = float(res['results'].boxes.conf[0].item()) if len(res['results'].boxes) > 0 else 0.0
-                fm.save_feedback(temp_img_path, res['top_class_name'], conf_val, res['danger_score'], 'CORRECT')
-                st.success('Feedback saved. Thank you!')
+                try:
+                    fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()) if len(res['results'].boxes) > 0 else 0.0, res['danger_score'], 'CORRECT')
+                    st.success('Feedback saved to Supabase. Thank you!')
+                except Exception as e:
+                    st.error(f"Supabase Error: {e}")
+            else:
+                st.info('Feedback received! (Demo Mode)')
     with col2:
         if st.button('❌ False Positive', use_container_width=True):
             if flywheel_available:
-                conf_val = float(res['results'].boxes.conf[0].item()) if len(res['results'].boxes) > 0 else 0.0
-                fm.save_feedback(temp_img_path, res['top_class_name'], conf_val, res['danger_score'], 'FALSE_POSITIVE')
-                st.success('Feedback saved. Thank you!')
+                try:
+                    fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()) if len(res['results'].boxes) > 0 else 0.0, res['danger_score'], 'FALSE_POSITIVE')
+                    st.success('Feedback saved to Supabase. Thank you!')
+                except Exception as e:
+                    st.error(f"Supabase Error: {e}")
+            else:
+                st.info('Feedback received! (Demo Mode)')
     with col3:
         if st.button('⚠️ Missed Defect', use_container_width=True):
             if flywheel_available:
-                conf_val = float(res['results'].boxes.conf[0].item()) if len(res['results'].boxes) > 0 else 0.0
-                fm.save_feedback(temp_img_path, res['top_class_name'], conf_val, res['danger_score'], 'MISSED_DEFECT')
-                st.success('Feedback saved. Thank you!')
+                try:
+                    fm.save_feedback(temp_img_path, res['top_class_name'], float(res['results'].boxes.conf[0].item()) if len(res['results'].boxes) > 0 else 0.0, res['danger_score'], 'MISSED_DEFECT')
+                    st.success('Feedback saved to Supabase. Thank you!')
+                except Exception as e:
+                    st.error(f"Supabase Error: {e}")
+            else:
+                st.info('Feedback received! (Demo Mode)')
 
-# --- CHAT ---
+# --- CONVERSATIONAL XAI CHAT ---
 if st.session_state.inspection_results is not None:
     st.markdown('---')
     st.subheader('Ask Aegis')
@@ -290,8 +318,6 @@ if st.session_state.inspection_results is not None:
                             'uncertainty_assessment': {'risk_score': st.session_state.inspection_results['danger_score'], 'is_ood': st.session_state.inspection_results['is_ood'], 'safety_override_triggered': st.session_state.inspection_results['force_review']},
                             'routing_decision': st.session_state.inspection_results['decision']
                         }
-                        
-                        # FIX 4: Truncate detections to top 5 to prevent 413 Token Error
                         if len(inspection_record['detections']) > 5:
                             inspection_record['detections'] = sorted(inspection_record['detections'], key=lambda x: x['confidence'], reverse=True)[:5]
 
