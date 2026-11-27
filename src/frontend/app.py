@@ -12,7 +12,6 @@ from groq import Groq
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from src.report_assistant.generator import generate_report, load_knowledge_base
-from src.report_assistant.vlm_prompt import SYSTEM_PROMPT, build_prompt
 from src.flywheel.manager import FlywheelManager
 
 # --- GLOBAL CONSTANTS ---
@@ -24,7 +23,6 @@ CLASS_NAMES = [
 CRITICAL_CLASSES = ['crazing', 'rolled-in_scale', 'scratches', 'crease']
 DECISION_ACCEPT = "ACCEPT"
 DECISION_HUMAN_REVIEW = "HUMAN_REVIEW"
-DECISION_REJECT = "REJECT"
 
 # --- CUSTOM CSS ---
 st.markdown("""
@@ -86,10 +84,14 @@ def extract_features(results):
 
 # --- SINGLE SOURCE OF TRUTH ---
 def route_inspection(raw_results, policy, is_ood, energy_score):
-    if len(raw_results.boxes) == 0:
-        return DECISION_HUMAN_REVIEW, "No detections found.", 0.0, "none", False
+    reason_codes = []
     if is_ood:
-        return DECISION_REJECT, f"OUT-OF-DOMAIN IMAGE (Color/Texture mismatch). Energy: {energy_score:.2f}", 1.0, "unknown", True
+        reason_codes.append("OUT_OF_DOMAIN")
+        return {"decision": DECISION_HUMAN_REVIEW, "reason_codes": reason_codes, "danger_score": 0.5, "top_class_name": "unknown", "force_review": True}
+    
+    if len(raw_results.boxes) == 0:
+        reason_codes.append("NO_DETECTIONS")
+        return {"decision": DECISION_HUMAN_REVIEW, "reason_codes": reason_codes, "danger_score": 0.0, "top_class_name": "none", "force_review": False}
         
     feats = extract_features(raw_results)
     x = np.array([feats[f] for f in FEATURES])
@@ -99,13 +101,13 @@ def route_inspection(raw_results, policy, is_ood, energy_score):
     
     top_cls = CLASS_NAMES[int(raw_results.boxes.cls[0].item())] if int(raw_results.boxes.cls[0].item()) < len(CLASS_NAMES) else 'unknown'
     max_conf = float(raw_results.boxes.conf[0].item())
-    force_review = top_cls in CRITICAL_CLASSES
     
-    if force_review: return DECISION_HUMAN_REVIEW, f"Critical class '{top_cls}' detected.", danger_score, top_cls, True
-    if max_conf < 0.60: return DECISION_HUMAN_REVIEW, f"Max confidence {max_conf:.2f} is below safety threshold (0.60).", danger_score, top_cls, False
-    if danger_score > 0.80: return DECISION_HUMAN_REVIEW, f"Risk score {danger_score:.2f} exceeds threshold.", danger_score, top_cls, False
+    if top_cls in CRITICAL_CLASSES: reason_codes.append("CRITICAL_CLASS")
+    if max_conf < 0.60: reason_codes.append("LOW_CONFIDENCE")
+    if danger_score > 0.80: reason_codes.append("HIGH_RISK")
     
-    return DECISION_ACCEPT, f"Auto-accepted (Risk: {danger_score:.2f}).", danger_score, top_cls, False
+    decision = DECISION_HUMAN_REVIEW if reason_codes else DECISION_ACCEPT
+    return {"decision": decision, "reason_codes": reason_codes, "danger_score": danger_score, "top_class_name": top_cls, "force_review": top_cls in CRITICAL_CLASSES}
 
 # --- STATE MANAGEMENT ---
 if 'messages' not in st.session_state: st.session_state.messages = []
@@ -127,15 +129,11 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
     img_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
     
     with st.spinner('Analyzing...'):
-        # 1. HARD OOD COLOR CHECK (Teal image will fail this)
         hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-        mean_saturation = np.mean(hsv[:, :, 1])
-        is_color_ood = mean_saturation > 30 # Grayscale steel has low saturation. Teal is high.
+        is_color_ood = np.mean(hsv[:, :, 1]) > 30
         
-        # 2. RAW INFERENCE with strict NMS
         raw_results = model(img_bgr, conf=0.001, agnostic_nms=True, verbose=False)[0]
         
-        # 3. ENERGY OOD SHIELD
         is_energy_ood, energy_score = False, 0.0
         if len(raw_results.boxes) > 0:
             probs = np.clip(raw_results.boxes.conf.cpu().numpy(), 1e-7, 1 - 1e-7)
@@ -143,35 +141,28 @@ if st.button('Run Inspection', use_container_width=True) and uploaded_file is no
             energy_score = float(np.max(energies))
             if energy_score > 0.0: is_energy_ood = True
         
-        # Combine OOD flags
         is_ood = is_color_ood or is_energy_ood
-                
-        # 4. ROUTING
-        decision, reason, danger_score, top_cls, force_review = route_inspection(raw_results, policy, is_ood, energy_score)
+        route = route_inspection(raw_results, policy, is_ood, energy_score)
         
-        # 5. FORCE VISUAL FILTER (Re-run inference just for drawing with hard 0.25 threshold)
+        # Visual Evidence: Draw boxes if NOT OOD (even low conf)
         if is_ood:
-            vis_results = []
-        else:
-            vis_results = model(img_bgr, conf=0.25, agnostic_nms=True, verbose=False)[0]
-            
-        if is_ood or len(vis_results.boxes) == 0:
             annotated_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         else:
-            annotated_rgb = cv2.cvtColor(vis_results.plot(conf=True, line_width=1), cv2.COLOR_BGR2RGB)
+            annotated_bgr = img_bgr.copy()
+            for box in raw_results.boxes:
+                conf = float(box.conf[0])
+                if conf < 0.05: continue # Ignore pure noise, but show low conf
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                color = (0, 165, 255) if conf < 0.60 else (0, 255, 0) # Orange if low conf, Green if high
+                label = f"{CLASS_NAMES[int(box.cls[0])]} {conf:.2f}"
+                cv2.rectangle(annotated_bgr, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(annotated_bgr, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
 
-        # CRITICAL FIX: Cast all NumPy types to native Python types for JSON serialization
         st.session_state.inspection_results = {
-            'image': image, 
-            'results': raw_results, 
-            'is_ood': bool(is_ood), 
-            'energy_score': float(energy_score),
-            'decision': str(decision), 
-            'reason': str(reason), 
-            'danger_score': float(danger_score),
-            'top_class_name': str(top_cls), 
-            'force_review': bool(force_review), 
-            'annotated_rgb': annotated_rgb
+            'image': image, 'results': raw_results, 'is_ood': bool(is_ood), 'energy_score': float(energy_score),
+            'decision': str(route['decision']), 'reason_codes': route['reason_codes'], 'danger_score': float(route['danger_score']),
+            'top_class_name': str(route['top_class_name']), 'force_review': bool(route['force_review']), 'annotated_rgb': annotated_rgb
         }
         st.session_state.messages = []
 
@@ -180,14 +171,21 @@ if st.session_state.inspection_results is not None:
     res = st.session_state.inspection_results
     col1, col2 = st.columns(2)
     with col1: st.image(res['image'], caption='Original Upload', use_column_width=True)
-    with col2: st.image(res['annotated_rgb'], caption='Filtered Detections (Strict Threshold)', use_column_width=True)
+    with col2: 
+        caption = "No defect localized. Image flagged as unfamiliar." if res['is_ood'] else "Detections (Orange = Low Confidence)"
+        st.image(res['annotated_rgb'], caption=caption, use_column_width=True)
 
     st.markdown('---')
-    if res['decision'] == DECISION_REJECT: st.error(f"REJECTED: {res['reason']}")
-    elif res['decision'] == DECISION_HUMAN_REVIEW: st.warning(f"HUMAN REVIEW REQUIRED: {res['reason']}")
-    else: st.success(f"AUTO-ACCEPTED: {res['reason']}")
+    reasons_str = ", ".join(res['reason_codes'])
+    if res['is_ood']:
+        st.error(f"⚠️ UNFAMILIAR IMAGE: Out-of-Distribution detected. Manual inspection required. (Reasons: {reasons_str})")
+    elif res['decision'] == DECISION_HUMAN_REVIEW:
+        st.warning(f"HUMAN REVIEW REQUIRED: {reasons_str}")
+    else:
+        st.success(f"AUTO-ACCEPTED: Clean part detected.")
 
-    if not res['is_ood'] and len(res['results'].boxes) > 0:
+    # Report Assistant (Only if not OOD and a class is known)
+    if not res['is_ood'] and res['top_class_name'] != 'unknown' and len(res['results'].boxes) > 0:
         try:
             report_text = generate_report(res['top_class_name'], float(res['results'].boxes.conf[0].item()), res['danger_score'], kb, res['force_review'])
             lines = report_text.strip().split('\n')
@@ -200,6 +198,7 @@ if st.session_state.inspection_results is not None:
             st.markdown(html, unsafe_allow_html=True)
         except Exception as e: st.warning(f'Report Assistant error: {e}')
 
+    # Feedback
     st.markdown('---')
     st.subheader('Inspector Feedback')
     temp_img_path = '/tmp/temp_upload.jpg'
@@ -234,12 +233,8 @@ if st.session_state.inspection_results is not None:
         suggested_q = None
         with col1:
             if st.button('What defect was found?', use_container_width=True): suggested_q = 'What defect was found?'
-        
-        # DYNAMIC UI: Only show 'Why is this flagged' if it's actually flagged
-        if st.session_state.inspection_results['decision'] != DECISION_ACCEPT:
-            with col2:
-                if st.button('Why is this flagged?', use_container_width=True): suggested_q = 'Why is this image sent for human review?'
-        
+        with col2:
+            if st.button('Why is this flagged?', use_container_width=True): suggested_q = 'Why is this image sent for human review?'
         with col3:
             if st.button('What is the risk score?', use_container_width=True): suggested_q = 'What is the risk score of this inspection?'
                 
@@ -255,15 +250,31 @@ if st.session_state.inspection_results is not None:
                 with st.spinner('Thinking...'):
                     try:
                         client = Groq(api_key=groq_key)
+                        
+                        # DETERMINISTIC PREFIX
+                        review_status = "yes" if st.session_state.inspection_results['decision'] == DECISION_HUMAN_REVIEW else "no"
+                        prefix = f"Decision: {st.session_state.inspection_results['decision']}. Reasons: {', '.join(st.session_state.inspection_results['reason_codes'])}. Human review: {review_status}. Risk Score: {round(st.session_state.inspection_results['danger_score'], 2)}.\n\n"
+                        
                         inspection_record = {
                             'inspection_id': 'live',
                             'detections': [{'class_name': CLASS_NAMES[int(b.cls[0])], 'confidence': round(float(b.conf[0]), 2)} for b in st.session_state.inspection_results['results'].boxes][:5],
-                            'uncertainty_assessment': {'risk_score': round(st.session_state.inspection_results['danger_score'], 2), 'is_ood': st.session_state.inspection_results['is_ood'], 'safety_override_triggered': st.session_state.inspection_results['force_review']},
-                            'routing_decision': st.session_state.inspection_results['decision']
+                            'uncertainty_assessment': {'risk_score': round(st.session_state.inspection_results['danger_score'], 2), 'is_ood': st.session_state.inspection_results['is_ood']},
+                            'routing_decision': st.session_state.inspection_results['decision'],
+                            'reason_codes': st.session_state.inspection_results['reason_codes']
                         }
-                        prompt = build_prompt(inspection_record, user_question)
+                        
+                        system_prompt = """You are AegisVision. Answer the user's question using ONLY the provided JSON.
+RULES:
+1. The deterministic prefix provided in the prompt is the absolute truth. Do not contradict it.
+2. If the decision is HUMAN_REVIEW because of OUT_OF_DOMAIN, explain that the image does not look like the training data.
+3. If the decision is HUMAN_REVIEW because of LOW_CONFIDENCE or CRITICAL_CLASS, explain that the model found a defect but requires human validation.
+4. Do not invent thresholds. If a fact is not in the JSON, say "I do not have that information."
+5. Output valid JSON with 'answer_text', 'is_abstained', 'abstain_reason'.
+"""
+                        user_prompt = f"JSON: {json.dumps(inspection_record)}\n\nDeterministic Truth: {prefix}\n\nQuestion: {user_question}\n\nAnswer in JSON format."
+                        
                         chat_completion = client.chat.completions.create(
-                            messages=[{'role': 'system', 'content': SYSTEM_PROMPT}, {'role': 'user', 'content': prompt}],
+                            messages=[{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': user_prompt}],
                             model='openai/gpt-oss-20b', temperature=0.0, response_format={'type': 'json_object'}
                         )
                         res_json = json.loads(chat_completion.choices[0].message.content)
@@ -271,9 +282,7 @@ if st.session_state.inspection_results is not None:
                         if res_json.get('is_abstained', False):
                             final_answer = f"⚠️ **Aegis Abstained**: {res_json.get('abstain_reason', 'Insufficient evidence.')}"
                         else:
-                            final_answer = res_json.get('answer_text', 'No answer generated.')
-                            if res_json.get('evidence_sources'):
-                                final_answer += f"\n\n*Sources: {', '.join(res_json['evidence_sources'])}*"
+                            final_answer = prefix + res_json.get('answer_text', 'No answer generated.')
                         
                         st.markdown(final_answer)
                         st.session_state.messages.append({'role': 'assistant', 'content': final_answer})
