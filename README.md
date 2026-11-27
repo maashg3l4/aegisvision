@@ -21,10 +21,26 @@ Unified 17-class dataset	NEU-DET, GC10-DET and CR7-DET merged into one label spa
 Deterministic grounding	The system status is injected as a fixed block ahead of LLM output under a strict JSON schema, so the language model cannot restate the system state.
 Documented failure modes	Known weaknesses are listed with their mitigations. See Limitations.
 Architecture
-<div align="center"> <img src="assets/architecture.svg" alt="Animated AegisVision V4.2 architecture diagram" width="100%"/> </div> <br/>
+<div align="center"> <img src="https://raw.githubusercontent.com/maashg3l4/aegisvision/main/assets/architecture.svg" alt="Animated AegisVision V4.2 architecture diagram" width="100%"/> </div> <br/>
 
 Blue packets are the nominal path. Amber packets are the OOD short-circuit: an out-of-domain image never reaches the detector, and the system emits HUMAN_REVIEW with the reason OUT_OF_DOMAIN.
 
+System at a glance
+AUTO_PASS
+HUMAN_REVIEW
+in-domain
+out-of-domain
+02 Shield
+HSV saturation gate
+Energy OOD score
+Steel image
+03 EyeYOLO26s, 17 classes
+Inference haltedno boxes drawn
+04 Brain16-feature LogReg routerdefault: HUMAN_REVIEW
+05 Decision
+06 Voicestatus block + groundedLLM
+07 Inspector UI
+08 FlywheelSupabase
 Component summary
 #	Stage	Role	Implementation
 01	Input	Raw steel-surface image	Upload via Streamlit
