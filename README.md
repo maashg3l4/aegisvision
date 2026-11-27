@@ -1,185 +1,193 @@
-<div align="center"> <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0b1220,100:3b82f6&height=180&section=header&text=AegisVision&fontColor=ffffff&fontSize=56&fontAlignY=38&animation=fadeIn&desc=Safety-first%20routing%20for%20industrial%20steel%20defect%20inspection&descSize=16&descAlignY=60" alt="AegisVision" width="100%"/> <a href="https://git.io/typing-svg"> <img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=600&size=22&pause=1200&color=3B82F6&center=true&vCenter=true&width=820&lines=Fail-closed+by+design;17-class+steel+surface+defect+detection;Dual+OOD+shield+%7C+Human-in-the-loop+routing;Deterministically+grounded+LLM+explanations" alt="AegisVision tagline" /> </a> <br/>
+<div align="center">
 
-Python PyTorch Streamlit FastAPI License: MIT
+<img src="assets/header.svg" alt="AegisVision safety-first industrial steel surface inspection" width="100%">
 
-Live Demo  ·  Architecture  ·  Results  ·  Limitations  ·  Quickstart
+<br>
+
+<a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white" alt="Python"></a>
+<a href="https://pytorch.org/"><img src="https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch"></a>
+<a href="https://streamlit.io/"><img src="https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white" alt="Streamlit"></a>
+<br><br>
+
+**A training-free, post-hoc routing framework for industrial steel surface defect detection.**
+
+<br>
+
+[**Live Demo**](https://aegisvision-n84itsqjrquzfpkwu5x3d9.streamlit.app/) ·
+[Architecture](#system-architecture) ·
+[Results](#recorded-results) ·
+[Limitations](#limitations) ·
+[Run Locally](#run-locally)
 
 </div>
-Abstract
 
-Industrial vision models fail silently. A detector can place a confident box on a pristine surface, miss a micro-crack, or, when shown an image from a different domain, answer with the same confidence as it would on familiar data. For an inspector, the accuracy of the model matters less than a different question:
+---
 
-When can a human trust the AI, and when must they be forced to look?
+## Overview
 
-AegisVision treats this as a routing problem rather than a detection problem. A 17-class YOLO26s detector produces candidate defects, and a fail-closed router decides whether the result may pass automatically. The router defaults to HUMAN_REVIEW and releases an image only when it is positively shown to be in-domain, confident, and free of safety-override classes. A grounded explanation layer then reports that decision without being able to contradict it.
+Object detectors do not, by themselves, indicate whether their predictions are safe to act on. A confident box may correspond to a defect, a false positive, or an image outside the model's training domain.
 
-Contributions
-	
-Fail-closed routing	A 16-feature logistic-regression router whose default outcome is human review. Automation must be earned per image.
-Dual OOD shield	A hard HSV-saturation check combined with an energy-based OOD score halts inference on foreign-domain inputs before any box is drawn.
-Unified 17-class dataset	NEU-DET, GC10-DET and CR7-DET merged into one label space, trained with class weighting to counter rare-defect imbalance.
-Deterministic grounding	The system status is injected as a fixed block ahead of LLM output under a strict JSON schema, so the language model cannot restate the system state.
-Documented failure modes	Known weaknesses are listed with their mitigations. See Limitations.
-Architecture
-<div align="center"> <img src="https://raw.githubusercontent.com/maashg3l4/aegisvision/main/assets/architecture.svg" alt="Animated AegisVision V4.2 architecture diagram" width="100%"/> </div> <br/>
+AegisVision separates detection from operational decision-making. The Streamlit app runs a detector, extracts 15 routing features, and applies a logistic-regression policy alongside out-of-distribution checks. The current interface reports one of these outcomes:
 
-Blue packets are the nominal path. Amber packets are the OOD short-circuit: an out-of-domain image never reaches the detector, and the system emits HUMAN_REVIEW with the reason OUT_OF_DOMAIN.
+- **AUTO-ACCEPTED** — no configured review rule was triggered.
+- **HUMAN REVIEW REQUIRED** — a configured review rule was triggered, including unfamiliar input.
 
-System at a glance
-AUTO_PASS
-HUMAN_REVIEW
-in-domain
-out-of-domain
-02 Shield
-HSV saturation gate
-Energy OOD score
-Steel image
-03 EyeYOLO26s, 17 classes
-Inference haltedno boxes drawn
-04 Brain16-feature LogReg routerdefault: HUMAN_REVIEW
-05 Decision
-06 Voicestatus block + groundedLLM
-07 Inspector UI
-08 FlywheelSupabase
-Component summary
-#	Stage	Role	Implementation
-01	Input	Raw steel-surface image	Upload via Streamlit
-02	Shield	Reject foreign-domain images before inference	HSV saturation gate + energy-based OOD score
-03	Eye	Localise and classify defects	YOLO26s, 17 classes, cls_pw=1.0
-04	Brain	Decide whether the result may skip human review	16-feature logistic regression, default HUMAN_REVIEW
-05	Decision	Verdict plus machine-readable reasons	AUTO_PASS or HUMAN_REVIEW with reason codes
-06	Voice	Explain the verdict in natural language	JSON-schema LLM with deterministic status prefix
-07	Inspector	Final human decision	Streamlit interface
-08	Flywheel	Capture human corrections for retraining	Supabase (migration in progress)
-Routing logic
+The system is designed for human-assisted inspection, not autonomous defect clearance. Its status and thresholds describe the current application behavior, not a safety certification.
 
-The decision is an ordered cascade. Each gate can only move an image toward human review. No later stage can undo an earlier rejection.
+---
 
-no
-yes
-no
-yes
-yes
-no
-no
-yes
-Input image
-HSV saturationwithin steel range?
-HUMAN_REVIEWOUT_OF_DOMAIN
-Energy OOD scorebelow threshold?
-YOLO26s inference
-Safety override?rolled_pit detected orbox confidence below 0.60
-HUMAN_REVIEWSAFETY_OVERRIDE
-16-feature logisticregression router
-Proven safe?
-HUMAN_REVIEWLOW_ROUTER_CONFIDENCE
-AUTO_PASS
+## System Architecture
 
-Thresholds and reason-code names above are illustrative. Keep them in sync with src/ when you change them.
+<div align="center">
+<img src="assets/architecture.svg" alt="AegisVision system architecture" width="100%">
+</div>
 
-Grounded explanation layer
+<br>
 
-Language models describe state fluently and incorrectly. AegisVision removes that failure mode by making the status block a program output, not a model output.
+| Stage | Component | Responsibility |
+|:-----:|:----------|:---------------|
+| 01 | **Input** | Accept a JPG, JPEG, or PNG image through the Streamlit interface. |
+| 02 | **Detector** | Produce candidate boxes and confidence scores for the uploaded image. |
+| 03 | **OOD Check** | Check image saturation and a score derived from detector confidences for unfamiliar inputs. This check runs after inference in the current app. |
+| 04 | **Feature Extraction** | Convert detections into 15 numerical routing features. |
+| 05 | **Routing Policy** | Apply the frozen logistic-regression policy to rank inspection risk. |
+| 06 | **Review Rules** | Route unfamiliar images, empty detections, low confidence, configured critical classes, or high risk to human review. |
+| 07 | **Report Assistant** | Generate a deterministic report from the local defect knowledge base. |
 
-Inspector UI
-LLM (JSON schema)
-Status Builder
-Router
-Inspector UI
-LLM (JSON schema)
-Status Builder
-Router
-The status line is rendered verbatim.
-The LLM can elaborate but cannot restate or override it.
-decision, reason codes, detections
-1
-Decision: HUMAN_REVIEW. Reasons: OUT_OF_DOMAIN
-2
-same facts as structured context
-3
-explanation conforming to schema
-4
-Design invariants
-Fail-closed. Absence of evidence of safety is treated as unsafe.
-Monotone gates. A gate can add reasons for review. It can never remove one.
-No box without domain. Out-of-domain inputs never produce bounding boxes.
-Status is data. The system state shown to the user is generated by code, not by the LLM.
-Rare means review. Classes with insufficient validation support are always routed to a human.
-Results
+### Detection and Routing
 
-Evaluated on the validation split of the unified 17-class dataset.
+The dataset unification script defines a 15-class taxonomy combining NEU-DET and GC10-DET:
 
-Metric	Result	Notes
-17-class mAP50	0.767	YOLO26s, multi-domain generalist
-crease mAP50	0.437	Rare class; improved with class weighting
-rolled_pit mAP50	0.228	Known weak class, see below
-Low-confidence routing	Enforced	Boxes under 0.60 confidence always yield HUMAN_REVIEW (invariant by construction)
-OOD rejection	Pass	Synthetic teal-surface test image rejected as OUT_OF_DOMAIN (single qualitative test)
-Status grounding	Enforced	Status block is deterministic, so the LLM cannot contradict the router (invariant by construction)
-Visual evidence
-<div align="center"> <img src="assets/ood_energy_distribution.png" alt="Energy-score distribution and OOD rejection of a synthetic teal image" width="80%"/> <br/> <sub><b>Figure 1.</b> The shield rejects a teal painted surface before inference. No boxes are drawn and the router emits <code>HUMAN_REVIEW</code> with reason <code>OUT_OF_DOMAIN</code>.</sub> </div>
-Limitations and failure analysis
+```text
+crazing, inclusion, patches, pitted_surface, rolled-in_scale, scratches,
+punching_hole, welding_line, crescent_gap, water_spot, oil_spot,
+silk_spot, rolled_pit, crease, waist_folding
+```
 
-A safety system is only credible if it states where it fails.
+The V3 routing-policy artifact records a 15-class unified dataset and an AUROC of **0.772**. The app extracts 15 runtime features from prediction confidence, geometry, density, and class diversity and uses a review threshold of **0.80**. The policy artifact and running app should be kept aligned with the listed taxonomy before interpreting results.
 
-<details open> <summary><b>1. <code>rolled_pit</code> remains weak (0.228 mAP50)</b></summary> <br/>
+In the current implementation:
 
-The validation set holds only 9 instances of this class. A detector cannot learn the visual distribution of a defect from nine examples, and mAP estimated on nine samples has high variance. Class weighting and mixup did not close the gap.
+1. The detector runs before the app evaluates its out-of-distribution signals. If the image is flagged, the app hides the detection boxes and requires manual review.
+2. Detection of `crazing`, `rolled-in_scale`, `scratches`, or `crease` forces human review.
+3. Empty detections, top-box confidence below `0.60`, or an inspection risk score above `0.80` require human review.
+4. Otherwise, the interface marks the image `AUTO-ACCEPTED`.
 
-Mitigation: every rolled_pit detection is forced to HUMAN_REVIEW by a safety override in the router.
-Next step: collect more labelled rolled_pit data before treating this class as automatable.
+The app's class-name mapping includes entries outside the dataset taxonomy above. This mismatch needs to be resolved before claiming that runtime detector outputs are validated against the 15-class taxonomy. Routing does not certify that an image is defect-free; it provides inspection triage.
 
-</details> <details> <summary><b>2. Feedback flywheel is not yet reliable</b></summary> <br/>
+### Decision Flow
 
-Human corrections are meant to flow to Supabase for retraining. On Streamlit Community Cloud, image upload currently fails because of an IPv4/IPv6 incompatibility with Supabase's default direct connection.
+```mermaid
+flowchart TD
+    A([Image input]) --> B[Detector inference]
+    B --> C{Saturation or<br/>energy check flags OOD?}
+    C -- Yes --> R1[/HUMAN REVIEW REQUIRED<br/>boxes hidden/]
+    C -- No --> D[Extract 15 routing features]
+    D --> E[Apply logistic-regression policy]
+    E --> F{No detections,<br/>low confidence,<br/>critical class or risk > 0.80?}
+    F -- Yes --> R2[/HUMAN REVIEW REQUIRED/]
+    F -- No --> S[/AUTO-ACCEPTED/]
 
-Mitigation: migrating to the Supabase IPv4 Session Pooler.
+    classDef review fill:#3f1d1d,stroke:#f87171,color:#fecaca;
+    classDef pass fill:#14301f,stroke:#4ade80,color:#bbf7d0;
+    class R1,R2 review;
+    class S pass;
+```
 
-</details> <details> <summary><b>3. Inference is coupled to the UI</b></summary> <br/>
+---
 
-The Streamlit app runs YOLO locally. A FastAPI backend has been drafted to separate inference from presentation, but the live demo still uses local inference for stability.
+## Recorded Results
 
-</details> <details> <summary><b>4. Evaluation scope</b></summary> <br/>
+The tracked V3 routing-policy artifact reports the following value. It is not independently reproduced by this README and should not be treated as a guarantee of performance on new materials, cameras, lighting conditions, or production scales.
 
-OOD rejection has been verified qualitatively on a synthetic example. A quantitative evaluation (AUROC and FPR at a fixed TPR against held-out foreign-domain images) is planned.
+| Metric | Result | Source |
+|:-------|:------:|:-------|
+| Routing policy AUROC | **0.772** | `src/policy/routing_policy_v3.json` |
 
-</details>
-Roadmap
-[x] Unified 17-class dataset and YOLO26s training
-[x] Fail-closed router with safety overrides
-[x] Dual OOD shield (HSV + energy)
-[x] Deterministic status grounding
-[ ] Supabase IPv4 Session Pooler migration
-[ ] Decouple inference behind FastAPI
-[ ] Quantitative OOD benchmark (AUROC, FPR@95TPR)
-[ ] Router calibration analysis (reliability diagrams)
-[ ] More rolled_pit and crease training data
-Quickstart
-bash
+### Visual Evidence
+
+<div align="center">
+<img src="assets/ood_energy_distribution.png" alt="OOD energy score distribution" width="85%">
+</div>
+
+---
+
+## Deployment
+
+The application is implemented with Streamlit and loads a detector artifact and routing policy at runtime. The app's runtime class-name mapping is not aligned with the 15-class taxonomy defined by the dataset unification script; verify and resolve that mismatch before deployment or interpreting detector results.
+
+The report assistant uses a local knowledge base to generate deterministic text. The core inspection workflow does not require an API key.
+
+The repository also contains FastAPI and Docker configuration for backend or container-oriented deployment. These components should be evaluated and configured before production use.
+
+---
+
+## Limitations
+
+| Area | Current Limitation |
+|:-----|:-------------------|
+| **Domain shift** | Performance may degrade under new surfaces, cameras, illumination, or image corruption. |
+| **Routing evaluation** | The routing model requires broader prospective validation before production acceptance. |
+| **Detection classes** | Rare defect classes may have limited validation support. |
+| **Runtime alignment** | The app's class-name mapping includes labels outside the dataset unification taxonomy; detector output alignment is unverified. |
+| **Calibration** | Reported routing scores should not be presented as calibrated probabilities without additional validation. |
+| **Human review** | The system supports triage; it does not replace trained inspectors or an established quality process. |
+| **Feedback** | The feedback integration is optional and should be verified in the target environment. |
+
+---
+
+## Run Locally
+
+```bash
 git clone https://github.com/maashg3l4/aegisvision.git
 cd aegisvision
-pip install -r requirements.txt
-
-# Launch the Streamlit app
+python -m pip install -r requirements.txt
 streamlit run src/frontend/app.py
-Reproducibility
+```
 
-Training follows an MLOps-first protocol. The pipeline uses an atomic auto-save callback that avoids Google Drive FUSE corruption by verifying file size and performing an atomic replace before a checkpoint is considered written.
+Python 3.10 or later is listed as the project version target.
 
-Citation
-bibtex
+---
+
+## Project Structure
+
+```text
+src/
+├── data/             Dataset preparation and unification
+├── evaluation/       Prediction extraction and feature engineering
+├── policy/           Routing policy and uncertainty logic
+├── frontend/         Streamlit application
+├── report_assistant/ Optional report generation
+└── api/              FastAPI deployment entry points
+
+assets/               README figures and visual evidence
+configs/              Model and benchmark configuration
+docs/                 Reports and project documentation
+tests/                Test suite
+```
+
+---
+
+## Datasets
+
+AegisVision uses the following public defect datasets:
+
+- **NEU-DET** — hot-rolled steel surface defects
+- **GC10-DET** — metallic surface defects
+
+Use and redistribution remain subject to the licenses and terms of the original dataset providers.
+
+## Citation
+
+```bibtex
 @software{aegisvision2026,
-  title  = {AegisVision: A Fail-Closed Routing Framework for Steel Surface Defect Inspection},
+  title  = {AegisVision: A Safety-First Routing Framework for Industrial Steel Surface Defect Detection},
   author = {maashg3l4},
   year   = {2026},
   url    = {https://github.com/maashg3l4/aegisvision}
 }
-Acknowledgements
+```
 
-Built on the NEU-DET, GC10-DET and CR7-DET datasets, and on PyTorch, YOLO, Streamlit, FastAPI and Supabase. Please cite the original dataset papers when using their data.
+## License
 
-License
-
-Released under the MIT License.
-
-<div align="center"> <img src="https://capsule-render.vercel.app/api?type=waving&color=0:3b82f6,100:0b1220&height=100&section=footer" width="100%" alt=""/> </div>
+No license file is currently present in this repository. Confirm licensing before redistributing this project.

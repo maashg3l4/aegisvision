@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1010 590" width="1010" height="590" role="img" aria-labelledby="t d" xmlns:c2pa="http://c2pa.org/manifest">
+  <title id="t">AegisVision V3 system architecture</title>
+  <desc id="d">An uploaded image runs through detector inference, an out-of-distribution check, feature extraction, and routing rules. The result is automatic acceptance or human review. A deterministic report assistant uses a local knowledge base, and optional human feedback can be sent to Supabase.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M25 0H0V25" fill="none" stroke="#1e293b" stroke-width="1"/>
+    </pattern>
+    <marker id="arr"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>
+    <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f87171"/></marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4ade80"/></marker>
+    <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#fbbf24"/></marker>
+  </defs>
+  <style>
+    .box   { fill: #111c33; stroke: #334155; stroke-width: 1.5; }
+    .h     { font: 600 14px "Inter","Segoe UI",-apple-system,Helvetica,Arial,sans-serif; fill: #f1f5f9; }
+    .s     { font: 11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; fill: #94a3b8; }
+    .n     { font: 600 10px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; fill: #64748b; letter-spacing: 1.5px; }
+    .lane  { font: 600 11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; fill: #f87171; letter-spacing: .6px; }
+    .foot  { font: 12px "Inter","Segoe UI",Helvetica,Arial,sans-serif; fill: #64748b; letter-spacing: .3px; }
+    .flow  { fill: none; stroke: #64748b; stroke-width: 2; stroke-dasharray: 6 6; animation: dash 1s linear infinite; }
+    .flowR { fill: none; stroke: #f87171; stroke-width: 2; stroke-dasharray: 6 6; animation: dash 1s linear infinite; }
+    .flowG { fill: none; stroke: #4ade80; stroke-width: 2; stroke-dasharray: 6 6; animation: dash 1s linear infinite; }
+    .flowA { fill: none; stroke: #fbbf24; stroke-width: 1.6; stroke-dasharray: 3 5; animation: dash 1.4s linear infinite; }
+    @keyframes dash { to { stroke-dashoffset: -24; } }
+    @media (prefers-reduced-motion: reduce) { .flow,.flowR,.flowG,.flowA { animation: none; } }
+  </style>
+
+  <rect width="1010" height="590" rx="14" fill="url(#bg)"/>
+  <rect width="1010" height="590" rx="14" fill="url(#grid)"/>
+
+  <text class="n" x="30"  y="110">01 INPUT</text>
+  <text class="n" x="190" y="110">02 DETECTOR</text>
+  <text class="n" x="400" y="110">03 OOD CHECK</text>
+  <text class="n" x="590" y="110">04 FEATURES</text>
+  <text class="n" x="780" y="110">05 BRAIN</text>
+  <text class="n" x="590" y="440">06 VOICE</text>
+  <text class="n" x="190" y="440">07 FLYWHEEL</text>
+
+  <path class="flowR" d="M475 120 V82 H990 V350 H970" marker-end="url(#arrR)"/>
+  <text class="lane" x="632" y="72" text-anchor="middle">OUT-OF-DOMAIN  →  BOXES HIDDEN, HUMAN REVIEW REQUIRED</text>
+
+  <path class="flow" d="M150 165 H188" marker-end="url(#arr)"/>
+  <path class="flow" d="M360 165 H398" marker-end="url(#arr)"/>
+  <path class="flow" d="M550 165 H588" marker-end="url(#arr)"/>
+  <path class="flow" d="M740 165 H778" marker-end="url(#arr)"/>
+
+  <path class="flowG" d="M820 210 C820 265 675 255 675 308" marker-end="url(#arrG)"/>
+  <path class="flowR" d="M885 210 V308" marker-end="url(#arrR)"/>
+
+  <path class="flowG" d="M675 390 V448" marker-end="url(#arrG)"/>
+  <path class="flowR" d="M885 390 V448" marker-end="url(#arrR)"/>
+
+  <path class="flowA" d="M590 495 H492" marker-end="url(#arrA)"/>
+  <text class="s" x="541" y="486" text-anchor="middle" style="fill:#fbbf24">feedback</text>
+
+  <rect class="box" x="30" y="120" width="120" height="90" rx="10"/>
+  <text class="h" x="90" y="152" text-anchor="middle">Image</text>
+  <text class="s" x="90" y="174" text-anchor="middle">steel surface</text>
+  <text class="s" x="90" y="190" text-anchor="middle">raw frame</text>
+
+  <rect class="box" x="190" y="120" width="170" height="90" rx="10"/>
+  <text class="h" x="275" y="152" text-anchor="middle">Detector</text>
+  <text class="s" x="275" y="174" text-anchor="middle">candidate boxes</text>
+  <text class="s" x="275" y="190" text-anchor="middle">and confidence scores</text>
+
+  <rect class="box" x="400" y="120" width="150" height="90" rx="10" style="stroke:#f87171"/>
+  <text class="h" x="475" y="152" text-anchor="middle">OOD Check</text>
+  <text class="s" x="475" y="174" text-anchor="middle">HSV saturation</text>
+  <text class="s" x="475" y="190" text-anchor="middle">+ confidence energy</text>
+
+  <rect class="box" x="590" y="120" width="150" height="90" rx="10"/>
+  <text class="h" x="665" y="152" text-anchor="middle">Feature Vector</text>
+  <text class="s" x="665" y="174" text-anchor="middle">15 engineered</text>
+  <text class="s" x="665" y="190" text-anchor="middle">signals</text>
+
+  <rect class="box" x="780" y="120" width="190" height="90" rx="10" style="stroke:#3b82f6">
+    <animate attributeName="stroke" values="#3b82f6;#93c5fd;#3b82f6" dur="3s" repeatCount="indefinite"/>
+  </rect>
+  <text class="h" x="875" y="152" text-anchor="middle">Risk Router</text>
+  <text class="s" x="875" y="174" text-anchor="middle">Logistic Regression</text>
+  <text class="s" x="875" y="190" text-anchor="middle">review rules + threshold</text>
+
+  <rect class="box" x="590" y="310" width="170" height="80" rx="10" style="stroke:#4ade80"/>
+  <text class="h" x="675" y="343" text-anchor="middle" style="fill:#4ade80">AUTO-ACCEPTED</text>
+  <text class="s" x="675" y="364" text-anchor="middle">no configured review</text>
+  <text class="s" x="675" y="378" text-anchor="middle">rule triggered</text>
+
+  <rect class="box" x="800" y="310" width="170" height="80" rx="10" style="stroke:#f87171"/>
+  <text class="h" x="885" y="338" text-anchor="middle" style="fill:#f87171">HUMAN REVIEW</text>
+  <text class="s" x="885" y="358" text-anchor="middle">OOD · no detections · low conf</text>
+  <text class="s" x="885" y="374" text-anchor="middle">critical class · risk &gt; 0.80</text>
+
+  <rect class="box" x="590" y="450" width="380" height="90" rx="10"/>
+  <text class="h" x="780" y="482" text-anchor="middle">Deterministic Report Assistant</text>
+  <text class="s" x="780" y="504" text-anchor="middle">local defect knowledge base</text>
+  <text class="s" x="780" y="520" text-anchor="middle">optional narrative for detected classes</text>
+
+  <rect class="box" x="190" y="450" width="300" height="90" rx="10" style="stroke:#fbbf24; stroke-dasharray:5 4"/>
+  <text class="h" x="340" y="482" text-anchor="middle">Feedback Flywheel</text>
+  <text class="s" x="340" y="504" text-anchor="middle">optional human feedback → Supabase</text>
+  <text class="s" x="340" y="520" text-anchor="middle">requires configured credentials</text>
+
+  <circle r="5" fill="#60a5fa">
+    <animateMotion dur="8s" repeatCount="indefinite" path="M90 165 H820 C820 265 675 255 675 310 V450"/>
+  </circle>
+  <circle r="5" fill="#f87171">
+    <animateMotion dur="8s" begin="4s" repeatCount="indefinite" path="M475 120 V82 H990 V350 H970"/>
+  </circle>
+
+  <text class="foot" x="505" y="570" text-anchor="middle">Automatic acceptance is an inspection-triage outcome, not proof that a part is defect-free.</text>
+<metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTo0MTE5MjQzZS00ZmM0LTRhMDYtODg4Zi1hYWNjMjJkMTliNGIAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaJbRNf4lx3xlfxI5IB4UcbgAAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDoxYzM1NWI5OC03N2Q5LTQ3N2UtOWRkNC1mMGU2NzA0ODNlMjNscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNo6RkgSKri0VeKBmrr2yDuQQAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFggFr2qfzt9QQtjyAHagbx6t641fozZdeMoIJ5b4KE9VoukZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaI8idXpM/BO8GmxLzDwekI8AAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRMAAAAAAAAAAAAAAAAZGhhc2hYIPGeZZ3ILqg2StIql9/SjzmvcS1NGUKatrgQvQo6xTPxZG5hbWVuanVtYmYgbWFuaWZlc3RqZXhjbHVzaW9uc4GiZXN0YXJ0GR4oZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOjQxMTkyNDNlLTRmYzQtNGEwNi04ODhmLWFhY2MyMmQxOWI0Yi9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOjUyYjY4ODAwLTVhZTktNGFkYi1iYjAwLWVmY2M5MWY2ZmRlM3JjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCAWvap/O31BC2PIAdqBvHq3rjV+jNl14yggnlvgoT1Wi6JjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggtweNuhwNGb5qE5TSWPtXnbym/Fh8xOlkMZZSqvy2VbGiY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFgg62c0PgBlF5v2fGC0hZfEHaFJtersHw/4P1k03vOUdPN0Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQEsMCm7gni97mcnY2OslbcgvtoNG2YGO1I390isTj0IS5HJ/g6RqMl5ZkRMqKCmfuVFfpgtMtPNFfn0WJckzdlM=</c2pa:manifest></metadata></svg>
