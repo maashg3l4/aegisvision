@@ -20,7 +20,7 @@
 ---
 
 ## 🎯 The Core Problem: Silent AI Failures
-In industrial manufacturing, AI models fail silently. A YOLO model might confidently hallucinate a bounding box on a pristine surface, or miss a critical micro-crack. Furthermore, when a model is shown an Out-of-Distribution (OOD) image—like a painted surface instead of raw steel—it will confidently guess. 
+In industrial manufacturing, AI models fail silently. A YOLO model might confidently hallucinate a bounding box on a pristine surface, or miss a critical micro-crack. Furthermore, when a model is shown an Out-of-Distribution (OOD) image like a painted surface instead of raw steel it will confidently guess. 
 
 **Inspectors cannot trust a black-box AI. AegisVision solves this by answering one question:** *"When should a human trust the AI, and when must they be forced to review?"*
 
